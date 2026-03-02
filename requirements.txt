@@ -1,0 +1,1 @@
+# Danh sách các thư viện Python cần thiết (langchain, chromadb, python-docx, v.v.)
