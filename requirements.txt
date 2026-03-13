@@ -1,1 +1,4 @@
-# Danh sách các thư viện Python cần thiết (langchain, chromadb, python-docx, v.v.)
+chromadb
+python-docx
+torch
+transformers

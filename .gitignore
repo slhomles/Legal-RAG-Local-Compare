@@ -1,2 +1,5 @@
 # Bỏ qua các file data/, chroma_db/, __pycache__/ khi commit
+venv/
+.env
 __pycache__/
+*.pyc

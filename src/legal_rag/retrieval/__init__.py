@@ -1,1 +1,3 @@
-# Module Tuần 5-6: Truy xuất thông tin [cite: 35]
+from legal_rag.retrieval.retriever import LegalRetriever
+
+__all__ = ["LegalRetriever"]

@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import docx
-from transformers import AutoTokenizer
 
 from legal_rag.config import (
     CHUNK_OVERLAP_TOKENS,
@@ -26,6 +25,9 @@ class DocumentProcessor:
 
     def __init__(self):
         os.environ.setdefault("HF_HUB_OFFLINE", "1")
+        os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+        from transformers import AutoTokenizer
+
         self.legal_regex = re.compile(LEGAL_CHUNK_REGEX, re.MULTILINE)
         self.structure_regex = re.compile(STRUCTURE_CHUNK_REGEX, re.MULTILINE)
         self.generic_heading_regex = re.compile(GENERIC_HEADING_REGEX, re.MULTILINE)
