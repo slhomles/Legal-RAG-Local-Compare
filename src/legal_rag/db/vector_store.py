@@ -1,75 +1,79 @@
-﻿import os
-from typing import List, Dict, Any
+import os
+from typing import Any, Dict, List
+
 from langchain_community.embeddings import HuggingFaceBgeEmbeddings
 from langchain_community.vectorstores import Chroma
 
-# Import cáº¥u hÃ¬nh
-from legal_rag.config import CHROMA_DB_DIR, CHROMA_COLLECTION_NAME, EMBEDDING_MODEL_NAME
+from legal_rag.config import CHROMA_COLLECTION_NAME, CHROMA_DB_DIR, DEVICE, EMBEDDING_MODEL_NAME
+
 
 class VectorStoreManager:
     """
-    Module quáº£n lÃ½ cÆ¡ sá»Ÿ dá»¯ liá»‡u Vector (ChromaDB) vÃ  Embeddings (BGE-M3)
+    Manage local embeddings and the Chroma collection for legal chunks.
     """
-    
+
     def __init__(self):
-        # 1. Khá»Ÿi táº¡o mÃ´ hÃ¬nh Embedding
-        print(f"[*] Äang táº£i mÃ´ hÃ¬nh nhÃºng {EMBEDDING_MODEL_NAME}...")
-        
-        # Thiáº¿t láº­p mÃ´ hÃ¬nh BGE-M3 phÃ¹ há»£p cho tiáº¿ng Viá»‡t
-        model_kwargs = {'device': 'cpu'} # Äá»•i thÃ nh 'cuda' náº¿u cÃ³ GPU Ä‘á»ƒ cháº¡y nhanh hÆ¡n
-        encode_kwargs = {'normalize_embeddings': True} # Quan trá»ng Ä‘á»ƒ tÃ­nh toÃ¡n khoáº£ng cÃ¡ch vector chÃ­nh xÃ¡c
-        
+        os.environ.setdefault("HF_HUB_OFFLINE", "1")
+        print(f"[*] Dang tai mo hinh nhung {EMBEDDING_MODEL_NAME}...")
+        model_kwargs = {"device": DEVICE}
+        encode_kwargs = {"normalize_embeddings": True}
+
         self.embeddings = HuggingFaceBgeEmbeddings(
             model_name=EMBEDDING_MODEL_NAME,
             model_kwargs=model_kwargs,
-            encode_kwargs=encode_kwargs
+            encode_kwargs=encode_kwargs,
         )
-        print("[+] Khá»Ÿi táº¡o Embedding Model thÃ nh cÃ´ng.")
-        
-        # 2. Khá»Ÿi táº¡o káº¿t ná»‘i Ä‘áº¿n ChromaDB (LÆ°u trá»¯ cá»¥c bá»™)
-        print(f"[*] Káº¿t ná»‘i Ä‘áº¿n ChromaDB táº¡i: {CHROMA_DB_DIR}")
+        print("[+] Khoi tao Embedding Model thanh cong.")
+
+        self._create_vector_db()
+
+    def _create_vector_db(self) -> None:
+        print(f"[*] Ket noi den ChromaDB tai: {CHROMA_DB_DIR}")
         self.vector_db = Chroma(
             collection_name=CHROMA_COLLECTION_NAME,
             embedding_function=self.embeddings,
-            persist_directory=str(CHROMA_DB_DIR) # Ã‰p kiá»ƒu sang chuá»—i Ä‘á»ƒ trÃ¡nh lá»—i Ä‘Æ°á»ng dáº«n
+            persist_directory=str(CHROMA_DB_DIR),
         )
-        print("[+] Káº¿t ná»‘i Vector DB thÃ nh cÃ´ng.")
+        print("[+] Ket noi Vector DB thanh cong.")
 
-    def add_documents(self, chunks: List[Dict[str, Any]]):
-        """
-        Nháº­n danh sÃ¡ch chunks, nhÃºng thÃ nh vector vÃ  lÆ°u vÃ o ChromaDB.
-        """
+    def reset_collection(self) -> None:
+        print(f"[*] Xoa du lieu cu trong collection: {CHROMA_COLLECTION_NAME}")
+        try:
+            self.vector_db.delete_collection()
+            print("[+] Da xoa collection cu.")
+        except Exception as exc:
+            print(f"[!] Khong the xoa collection cu sach se: {exc}")
+
+        self._create_vector_db()
+
+    def add_documents(self, chunks: List[Dict[str, Any]]) -> None:
         if not chunks:
-            print("[!] KhÃ´ng cÃ³ dá»¯ liá»‡u Ä‘á»ƒ thÃªm vÃ o cÆ¡ sá»Ÿ dá»¯ liá»‡u.")
+            print("[!] Khong co du lieu de them vao co so du lieu.")
             return
 
-        texts = []
-        metadatas = []
-        
+        ids: List[str] = []
+        texts: List[str] = []
+        metadatas: List[Dict[str, Any]] = []
+
         for chunk in chunks:
-            if "content" in chunk and "metadata" in chunk:
+            if {"id", "content", "metadata"}.issubset(chunk):
+                ids.append(chunk["id"])
                 texts.append(chunk["content"])
                 metadatas.append(chunk["metadata"])
-                
-        print(f"[*] Äang nhÃºng (embedding) vÃ  lÆ°u {len(texts)} Ä‘oáº¡n vÄƒn báº£n...")
-        
+
+        print(f"[*] Dang nhung va luu {len(texts)} doan van ban...")
         self.vector_db.add_texts(
             texts=texts,
-            metadatas=metadatas
+            metadatas=metadatas,
+            ids=ids,
         )
-        
         self.vector_db.persist()
-        print(f"[+] ÄÃ£ lÆ°u dá»¯ liá»‡u vÃ o ChromaDB thÃ nh cÃ´ng.")
+        print("[+] Da luu du lieu vao ChromaDB thanh cong.")
 
     def search_similar(self, query: str, k: int = 3, filter_dict: Dict = None) -> List[Any]:
-        """
-        TÃ¬m kiáº¿m cÃ¡c Ä‘oáº¡n vÄƒn báº£n liÃªn quan Ä‘áº¿n cÃ¢u truy váº¥n.
-        """
-        print(f"[*] Äang tÃ¬m kiáº¿m: '{query}'...")
-        results = self.vector_db.similarity_search(
-            query=query, 
+        print(f"[*] Dang tim kiem: '{query}'...")
+        return self.vector_db.similarity_search(
+            query=query,
             k=k,
-            filter=filter_dict
+            filter=filter_dict,
         )
-        return results
-

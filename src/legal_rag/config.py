@@ -62,8 +62,8 @@ GENERIC_HEADING_REGEX = (
 DEFINITION_REGEX = r"(?im)^(?P<heading>[ \t]*(?:định nghĩa|giải thích từ ngữ)[\.\:\-]?[ \t]*)$"
 
 # Mặc dù chia theo regex, vẫn cần một giới hạn an toàn cho fallback (trường hợp văn bản lỗi)
-MAX_CHUNK_SIZE = 2000 
-CHUNK_OVERLAP = 200
+MAX_CHUNK_TOKENS = 512
+CHUNK_OVERLAP_TOKENS = 64
 
 
 # ==========================================

@@ -1,37 +1,51 @@
-﻿import re
+import os
+import re
+import unicodedata
+from collections import defaultdict
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import docx
+from transformers import AutoTokenizer
 
 from legal_rag.config import (
-    CHUNK_OVERLAP,
+    CHUNK_OVERLAP_TOKENS,
     DEFINITION_REGEX,
+    EMBEDDING_MODEL_NAME,
     GENERIC_HEADING_REGEX,
     LEGAL_CHUNK_REGEX,
-    MAX_CHUNK_SIZE,
+    MAX_CHUNK_TOKENS,
     STRUCTURE_CHUNK_REGEX,
 )
 
+
 class DocumentProcessor:
+    VERSION_SUFFIX_REGEX = re.compile(r"^(?P<doc_id>.+?)[_-](?P<version>v\d+)$", re.IGNORECASE)
+    STRUCTURE_PREFIX_REGEX = re.compile(r"^(phan|chuong|muc)\s+([ivxlcdm0-9]+)\b", re.IGNORECASE)
+    ARTICLE_PREFIX_REGEX = re.compile(r"^dieu\s+(\d+)\b", re.IGNORECASE)
 
     def __init__(self):
+        os.environ.setdefault("HF_HUB_OFFLINE", "1")
         self.legal_regex = re.compile(LEGAL_CHUNK_REGEX, re.MULTILINE)
         self.structure_regex = re.compile(STRUCTURE_CHUNK_REGEX, re.MULTILINE)
         self.generic_heading_regex = re.compile(GENERIC_HEADING_REGEX, re.MULTILINE)
         self.def_regex = re.compile(DEFINITION_REGEX, re.MULTILINE)
-        
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            EMBEDDING_MODEL_NAME,
+            local_files_only=True,
+            use_fast=True,
+        )
+
     def read_docx(self, file_path: str) -> str:
         try:
             doc = docx.Document(file_path)
             full_text = []
             for para in doc.paragraphs:
-                # Skip space
                 if para.text.strip():
                     full_text.append(para.text.strip())
-            return '\n'.join(full_text)
-        except Exception as e:
-            print(f"Not a docx file {file_path}: {e}")
+            return "\n".join(full_text)
+        except Exception as exc:
+            print(f"Not a docx file {file_path}: {exc}")
             return ""
 
     def clean_text(self, text: str) -> str:
@@ -40,163 +54,358 @@ class DocumentProcessor:
         text = re.sub(r"\n{3,}", "\n\n", text)
         return text.strip()
 
-    def _fallback_chunk_by_length(self, text: str, metadata: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _strip_accents(self, value: str) -> str:
+        normalized = unicodedata.normalize("NFD", value)
+        normalized = normalized.replace("đ", "d").replace("Đ", "D")
+        return "".join(ch for ch in normalized if unicodedata.category(ch) != "Mn")
+
+    def _slugify(self, value: str, fallback: str = "chunk") -> str:
+        folded = self._strip_accents(value).lower()
+        folded = re.sub(r"[^a-z0-9]+", "_", folded).strip("_")
+        return folded or fallback
+
+    def _safe_id_component(self, value: str, fallback: str = "chunk") -> str:
+        safe = value.strip().replace(":", "_")
+        safe = re.sub(r"\s+", "_", safe)
+        safe = re.sub(r"[<>]+", "_", safe)
+        return safe or fallback
+
+    def _roman_to_int(self, value: str) -> Optional[int]:
+        token = value.lower()
+        if not token or re.search(r"[^ivxlcdm]", token):
+            return None
+
+        values = {"i": 1, "v": 5, "x": 10, "l": 50, "c": 100, "d": 500, "m": 1000}
+        total = 0
+        previous = 0
+        for char in reversed(token):
+            current = values[char]
+            if current < previous:
+                total -= current
+            else:
+                total += current
+                previous = current
+        return total
+
+    def _normalize_number_token(self, token: str) -> Optional[str]:
+        stripped = token.strip().lower()
+        if not stripped:
+            return None
+        if stripped.isdigit():
+            return str(int(stripped))
+
+        roman_value = self._roman_to_int(stripped)
+        if roman_value is not None:
+            return str(roman_value)
+        return None
+
+    def _infer_doc_identity(self, stem: str, version_override: Optional[str]) -> tuple[str, str]:
+        match = self.VERSION_SUFFIX_REGEX.match(stem)
+        if match:
+            doc_id = match.group("doc_id")
+            version = version_override or match.group("version").lower()
+            return doc_id, version
+
+        return stem, (version_override or "v1")
+
+    def _build_heading_marker(self, match: re.Match, level_hint: str) -> Dict[str, Any]:
+        heading = (match.groupdict().get("heading") or match.group(0)).strip()
+        normalized = self._strip_accents(heading).lower().strip()
+        level = level_hint
+        number = None
+
+        structure_match = self.STRUCTURE_PREFIX_REGEX.match(normalized)
+        if structure_match:
+            keyword, token = structure_match.groups()
+            level_map = {"phan": "part", "chuong": "chapter", "muc": "section"}
+            level = level_map[keyword]
+            number = self._normalize_number_token(token)
+        else:
+            article_match = self.ARTICLE_PREFIX_REGEX.match(normalized)
+            if article_match:
+                level = "article"
+                number = self._normalize_number_token(article_match.group(1))
+            elif normalized.startswith("dinh nghia") or normalized.startswith("giai thich tu ngu"):
+                level = "definition"
+            elif level_hint not in {"part", "chapter", "section", "article", "definition"}:
+                level = "generic"
+
+        return {
+            "start": match.start(),
+            "heading": heading,
+            "level": level,
+            "number": number,
+        }
+
+    def _collect_heading_markers(self, text: str) -> List[Dict[str, Any]]:
+        candidates: List[Dict[str, Any]] = []
+        for regex, hint in (
+            (self.legal_regex, "article"),
+            (self.structure_regex, "structure"),
+            (self.def_regex, "definition"),
+            (self.generic_heading_regex, "generic"),
+        ):
+            for match in regex.finditer(text):
+                candidates.append(self._build_heading_marker(match, hint))
+
+        priority = {
+            "article": 0,
+            "part": 1,
+            "chapter": 1,
+            "section": 1,
+            "definition": 2,
+            "generic": 3,
+        }
+        deduped: Dict[int, Dict[str, Any]] = {}
+        for marker in sorted(candidates, key=lambda item: (item["start"], priority[item["level"]])):
+            existing = deduped.get(marker["start"])
+            if existing is None or priority[marker["level"]] < priority[existing["level"]]:
+                deduped[marker["start"]] = marker
+
+        return [deduped[start] for start in sorted(deduped)]
+
+    def _select_chunk_markers(self, all_headings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        article_markers = [marker for marker in all_headings if marker["level"] == "article"]
+        if article_markers:
+            return article_markers
+        return all_headings
+
+    def _build_active_hierarchy(
+        self,
+        all_headings: List[Dict[str, Any]],
+        start_index: int,
+    ) -> Dict[str, Optional[Dict[str, Any]]]:
+        active: Dict[str, Optional[Dict[str, Any]]] = {
+            "part": None,
+            "chapter": None,
+            "section": None,
+        }
+        for marker in all_headings:
+            if marker["start"] > start_index:
+                break
+
+            level = marker["level"]
+            if level == "part":
+                active["part"] = marker
+                active["chapter"] = None
+                active["section"] = None
+            elif level == "chapter":
+                active["chapter"] = marker
+                active["section"] = None
+            elif level == "section":
+                active["section"] = marker
+
+        return active
+
+    def _build_hierarchy_metadata(
+        self,
+        all_headings: List[Dict[str, Any]],
+        marker: Optional[Dict[str, Any]],
+        fallback_heading: str,
+    ) -> tuple[str, str]:
+        if marker is None:
+            return fallback_heading, self._slugify(fallback_heading, fallback="chunk")
+
+        active = self._build_active_hierarchy(all_headings, marker["start"])
+        hierarchy_parts: List[str] = []
+        logical_parts: List[str] = []
+        for level, prefix in (("part", "phan"), ("chapter", "chuong"), ("section", "muc")):
+            item = active[level]
+            if item:
+                hierarchy_parts.append(item["heading"])
+                if item["number"]:
+                    logical_parts.append(f"{prefix}_{item['number']}")
+
+        if marker["level"] == "article":
+            hierarchy_parts.append(marker["heading"])
+            if marker["number"]:
+                logical_parts.append(f"dieu_{marker['number']}")
+        elif marker["level"] in {"definition", "generic"}:
+            hierarchy_parts.append(marker["heading"])
+            logical_parts.append(self._slugify(marker["heading"], fallback="section"))
+        elif marker["level"] not in {"part", "chapter", "section"}:
+            hierarchy_parts.append(marker["heading"])
+
+        hierarchy_path = " > ".join(hierarchy_parts) if hierarchy_parts else fallback_heading
+        logical_id = "_".join(logical_parts) if logical_parts else self._slugify(marker["heading"], fallback="chunk")
+        return hierarchy_path, logical_id
+
+    def _count_tokens(self, text: str) -> int:
+        return len(self.tokenizer.encode(text, add_special_tokens=False))
+
+    def _split_text_by_token_limit(self, text: str) -> List[str]:
+        encoded = self.tokenizer(
+            text,
+            add_special_tokens=False,
+            return_offsets_mapping=True,
+            truncation=False,
+        )
+        offsets = encoded["offset_mapping"]
+        if not offsets:
+            return []
+
+        if len(offsets) <= MAX_CHUNK_TOKENS:
+            stripped = text.strip()
+            return [stripped] if stripped else []
+
+        parts: List[str] = []
+        start_token = 0
+        total_tokens = len(offsets)
+        while start_token < total_tokens:
+            end_token = min(total_tokens, start_token + MAX_CHUNK_TOKENS)
+            char_start = offsets[start_token][0]
+            char_end = offsets[end_token - 1][1]
+            part = text[char_start:char_end].strip()
+            if part:
+                parts.append(part)
+
+            if end_token >= total_tokens:
+                break
+            start_token = max(end_token - CHUNK_OVERLAP_TOKENS, start_token + 1)
+
+        return parts
+
+    def _append_with_size_guard(
+        self,
+        target: List[Dict[str, Any]],
+        chunk_content: str,
+        metadata: Dict[str, Any],
+    ) -> None:
+        if self._count_tokens(chunk_content) <= MAX_CHUNK_TOKENS:
+            target.append({"content": chunk_content, "metadata": metadata.copy()})
+            return
+
+        for part in self._split_text_by_token_limit(chunk_content):
+            target.append({"content": part, "metadata": metadata.copy()})
+
+    def _fallback_chunk_by_tokens(self, text: str, metadata: Dict[str, Any]) -> List[Dict[str, Any]]:
         if not text:
             return []
 
-        chunks = []
-        start = 0
-        idx = 1
-        text_len = len(text)
-
-        while start < text_len:
-            end = min(text_len, start + MAX_CHUNK_SIZE)
-            if end < text_len:
-                split_at = text.rfind("\n", start, end)
-                if split_at > start + (MAX_CHUNK_SIZE // 2):
-                    end = split_at
-
-            chunk_content = text[start:end].strip()
-            if chunk_content:
-                chunk_meta = metadata.copy()
-                chunk_meta["chunk_heading"] = f"Äoáº¡n {idx}"
-                chunks.append({"content": chunk_content, "metadata": chunk_meta})
-                idx += 1
-
-            if end >= text_len:
-                break
-            start = max(end - CHUNK_OVERLAP, start + 1)
+        chunks: List[Dict[str, Any]] = []
+        for idx, chunk_content in enumerate(self._split_text_by_token_limit(text), start=1):
+            chunk_heading = f"Doan {idx}"
+            chunk_meta = metadata.copy()
+            chunk_meta.update(
+                {
+                    "chunk_heading": chunk_heading,
+                    "hierarchy_path": chunk_heading,
+                    "logical_id": self._slugify(chunk_heading, fallback=f"chunk_{idx}"),
+                }
+            )
+            chunks.append({"content": chunk_content, "metadata": chunk_meta})
 
         return chunks
 
-    def _extract_heading_matches(self, text: str) -> List[re.Match]:
-        legal_matches = list(self.legal_regex.finditer(text))
-        if legal_matches:
-            return legal_matches
-
-        mixed_matches = (
-            list(self.structure_regex.finditer(text))
-            + list(self.def_regex.finditer(text))
-            + list(self.generic_heading_regex.finditer(text))
-        )
-
-        mixed_matches.sort(key=lambda m: m.start())
-        deduped: List[re.Match] = []
-        seen_positions = set()
-
-        for match in mixed_matches:
-            pos = match.start()
-            if pos in seen_positions:
-                continue
-            seen_positions.add(pos)
-            deduped.append(match)
-
-        return deduped
-
-    def _split_by_matches(
-        self, text: str, metadata: Dict[str, Any], matches: List[re.Match]
+    def _split_by_markers(
+        self,
+        text: str,
+        metadata: Dict[str, Any],
+        markers: List[Dict[str, Any]],
+        all_headings: List[Dict[str, Any]],
     ) -> List[Dict[str, Any]]:
-        def append_with_size_guard(
-            target: List[Dict[str, Any]],
-            chunk_content: str,
-            chunk_meta: Dict[str, Any],
-            base_heading: str,
-        ) -> None:
-            if len(chunk_content) <= MAX_CHUNK_SIZE:
-                target.append({"content": chunk_content, "metadata": chunk_meta})
-                return
+        chunks: List[Dict[str, Any]] = []
 
-            start = 0
-            part_idx = 1
-            total_len = len(chunk_content)
-
-            while start < total_len:
-                end = min(total_len, start + MAX_CHUNK_SIZE)
-                if end < total_len:
-                    split_at = chunk_content.rfind("\n", start, end)
-                    if split_at <= start + (MAX_CHUNK_SIZE // 2):
-                        split_at = chunk_content.rfind(". ", start, end)
-                        if split_at > start + (MAX_CHUNK_SIZE // 2):
-                            split_at += 1
-                    if split_at > start + (MAX_CHUNK_SIZE // 2):
-                        end = split_at
-
-                part = chunk_content[start:end].strip()
-                if part:
-                    part_meta = chunk_meta.copy()
-                    if part_idx > 1:
-                        part_meta["chunk_heading"] = f"{base_heading} (pháº§n {part_idx})"
-                    target.append({"content": part, "metadata": part_meta})
-                    part_idx += 1
-
-                if end >= total_len:
-                    break
-                start = max(end - CHUNK_OVERLAP, start + 1)
-
-        chunks = []
-
-        first_start = matches[0].start()
+        first_start = markers[0]["start"]
         if first_start > 0:
             preface = text[:first_start].strip()
             if preface:
                 preface_meta = metadata.copy()
-                preface_meta["chunk_heading"] = "Má»Ÿ Ä‘áº§u"
-                append_with_size_guard(chunks, preface, preface_meta, "Má»Ÿ Ä‘áº§u")
+                preface_meta.update(
+                    {
+                        "chunk_heading": "Mo dau",
+                        "hierarchy_path": "Mo dau",
+                        "logical_id": "mo_dau",
+                    }
+                )
+                self._append_with_size_guard(chunks, preface, preface_meta)
 
-        for i, match in enumerate(matches):
-            start_index = match.start()
-            heading = (match.groupdict().get("heading") or match.group(0)).strip()
-            end_index = matches[i + 1].start() if i + 1 < len(matches) else len(text)
-
+        for idx, marker in enumerate(markers):
+            start_index = marker["start"]
+            end_index = markers[idx + 1]["start"] if idx + 1 < len(markers) else len(text)
             chunk_content = text[start_index:end_index].strip()
             if not chunk_content:
                 continue
 
-            body = chunk_content.removeprefix(heading).strip()
-            if not body and i + 1 < len(matches):
+            body = chunk_content.removeprefix(marker["heading"]).strip()
+            if not body and idx + 1 < len(markers):
                 continue
 
+            hierarchy_path, logical_id = self._build_hierarchy_metadata(
+                all_headings=all_headings,
+                marker=marker,
+                fallback_heading=marker["heading"],
+            )
             chunk_meta = metadata.copy()
-            chunk_meta["chunk_heading"] = heading
-            append_with_size_guard(chunks, chunk_content, chunk_meta, heading)
+            chunk_meta.update(
+                {
+                    "chunk_heading": marker["heading"],
+                    "hierarchy_path": hierarchy_path,
+                    "logical_id": logical_id,
+                }
+            )
+            self._append_with_size_guard(chunks, chunk_content, chunk_meta)
 
         return chunks
+
+    def _finalize_chunks(self, chunks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        logical_counters: defaultdict[str, int] = defaultdict(int)
+        finalized: List[Dict[str, Any]] = []
+
+        for chunk_index, chunk in enumerate(chunks, start=1):
+            metadata = chunk["metadata"].copy()
+            metadata["chunk_index"] = chunk_index
+
+            logical_id = metadata["logical_id"]
+            logical_counters[logical_id] += 1
+            part_index = logical_counters[logical_id]
+
+            chunk_id = ":".join(
+                [
+                    self._safe_id_component(str(metadata["doc_id"]), fallback="doc"),
+                    self._safe_id_component(str(metadata["version"]), fallback="v1"),
+                    logical_id,
+                    f"p{part_index:02d}",
+                ]
+            )
+
+            finalized.append(
+                {
+                    "id": chunk_id,
+                    "content": chunk["content"],
+                    "metadata": metadata,
+                }
+            )
+
+        return finalized
 
     def semantic_chunking(self, text: str, metadata: Dict[str, Any]) -> List[Dict[str, Any]]:
+        all_headings = self._collect_heading_markers(text)
+        if not all_headings:
+            return self._finalize_chunks(self._fallback_chunk_by_tokens(text, metadata))
 
-        matches = self._extract_heading_matches(text)
-
-        if not matches:
-            return self._fallback_chunk_by_length(text, metadata)
-
-        chunks = self._split_by_matches(text, metadata, matches)
+        chunk_markers = self._select_chunk_markers(all_headings)
+        chunks = self._split_by_markers(text, metadata, chunk_markers, all_headings)
         if chunks:
-            return chunks
+            return self._finalize_chunks(chunks)
 
-        return self._fallback_chunk_by_length(text, metadata)
+        return self._finalize_chunks(self._fallback_chunk_by_tokens(text, metadata))
 
-    def process_file(self, file_path: str, version: str) -> List[Dict[str, Any]]:
-
+    def process_file(self, file_path: str, version_override: Optional[str] = None) -> List[Dict[str, Any]]:
         path_obj = Path(file_path)
-        doc_name = path_obj.name
-        
-        if path_obj.suffix.lower() == '.docx':
-            text = self.read_docx(file_path)
-        else:
+        if path_obj.suffix.lower() != ".docx":
             print(f"Not a docx file {path_obj.suffix}. please insert a .docx")
             return []
-            
-        clean_txt = self.clean_text(text)
-        
+
+        text = self.read_docx(file_path)
+        clean_text = self.clean_text(text)
+        doc_id, version = self._infer_doc_identity(path_obj.stem, version_override)
         base_metadata = {
-            "doc_id": doc_name,
-            "version": version
+            "doc_id": doc_id,
+            "version": version,
         }
-        
-        chunks = self.semantic_chunking(clean_txt, base_metadata)
-        
-        return chunks
+        return self.semantic_chunking(clean_text, base_metadata)
+
 
 if __name__ == "__main__":
     print("Document Processor Ready.")
-

@@ -30,13 +30,12 @@ def main() -> None:
 
     doc_processor = DocumentProcessor()
     vector_store = VectorStoreManager()
+    vector_store.reset_collection()
 
     total_chunks = 0
     for file_path in docx_files:
         print(f"\n>> Dang xu ly file: {file_path.name}")
-        version = "v1"
-
-        chunks = doc_processor.process_file(str(file_path), version=version)
+        chunks = doc_processor.process_file(str(file_path))
         print(f"  + Da chia thanh {len(chunks)} doan (chunks).")
 
         if not chunks:
