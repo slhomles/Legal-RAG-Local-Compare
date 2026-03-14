@@ -1,0 +1,30 @@
+{
+  "Dieu 1": {
+    "Bản_gốc": "Dieu 1. Dinh nghia\n1.1. \"Hang hoa\" la san pham dien tu bao gom laptop, may tinh ban va phu kien kem theo.\n1.2. \"Ben A\" la Cong ty TNHH ABC, dia chi: 123 Nguyen Hue, TP.HCM.\n1.3. \"Ben B\" la Cong ty CP XYZ, dia chi: 456 Le Loi, Ha Noi.",
+    "Bản_sửa_đổi": "Dieu 1. Dinh nghia\n1.1. \"Hang hoa\" la san pham dien tu bao gom laptop, may tinh ban, man hinh va phu kien kem theo.\n1.2. \"Ben A\" la Cong ty TNHH ABC, dia chi: 123 Nguyen Hue, TP.HCM.\n1.3. \"Ben B\" la Cong ty CP XYZ, dia chi: 789 Tran Hung Dao, Ha Noi."
+  },
+  "Dieu 2": {
+    "Bản_gốc": "Dieu 2. Gia tri hop dong\n2.1. Tong gia tri hop dong la 500.000.000 VND (Nam tram trieu dong).\n2.2. Gia tren da bao gom thue VAT 10%.\n2.3. Phuong thuc thanh toan: Chuyen khoan ngan hang.",
+    "Bản_sửa_đổi": "Dieu 2. Gia tri hop dong\n2.1. Tong gia tri hop dong la 650.000.000 VND (Sau tram nam muoi trieu dong).\n2.2. Gia tren da bao gom thue VAT 8%.\n2.3. Phuong thuc thanh toan: Chuyen khoan ngan hang hoac L/C."
+  },
+  "Dieu 3": {
+    "Bản_gốc": "Dieu 3. Thoi gian va dia diem giao hang\n3.1. Thoi gian giao hang: Trong vong 30 ngay ke tu ngay ky hop dong.\n3.2. Dia diem giao hang: Kho hang cua Ben B tai Ha Noi.\n3.3. Chi phi van chuyen do Ben A chiu.",
+    "Bản_sửa_đổi": "Dieu 3. Thoi gian va dia diem giao hang\n3.1. Thoi gian giao hang: Trong vong 45 ngay ke tu ngay ky hop dong.\n3.2. Dia diem giao hang: Kho hang cua Ben B tai Ha Noi.\n3.3. Chi phi van chuyen do Ben A chiu. Ben A duoc quyen lua chon don vi van chuyen."
+  },
+  "Dieu 4": {
+    "Bản_gốc": "Dieu 4. Bao hanh\n4.1. Thoi gian bao hanh: 12 thang ke tu ngay giao hang.\n4.2. Ben A chiu trach nhiem sua chua mien phi cac loi do nha san xuat.",
+    "Bản_sửa_đổi": "Dieu 4. Bao hanh\n4.1. Thoi gian bao hanh: 24 thang ke tu ngay giao hang.\n4.2. Ben A chiu trach nhiem sua chua mien phi cac loi do nha san xuat.\n4.3. Ben A cung cap duong day nong ho tro ky thuat 24/7."
+  },
+  "Dieu 5": {
+    "Bản_gốc": "Dieu 5. Phat vi pham\n5.1. Ben nao vi pham hop dong phai boi thuong 8% gia tri hop dong.\n5.2. Truong hop bat kha khang, hai ben se thoa thuan lai.",
+    "Bản_sửa_đổi": "Dieu 5. Phat vi pham\n5.1. Ben nao vi pham hop dong phai boi thuong 10% gia tri hop dong.\n5.2. Truong hop bat kha khang, hai ben se thoa thuan lai."
+  },
+  "Dieu 6": {
+    "Bản_gốc": "[KHÔNG CÓ DỮ LIỆU]",
+    "Bản_sửa_đổi": "Dieu 6. Dieu khoan bo sung\n6.1. Moi tranh chap phat sinh se duoc giai quyet tai Trung tam Trong tai Quoc te Viet Nam (VIAC)."
+  },
+  "Mo_dau": {
+    "Bản_gốc": "HOP DONG MUA BAN HANG HOA\nSo: 01/2024/HDMB\nCan cu Luat Thuong mai 2005;\nCan cu nhu cau va kha nang cua hai ben.",
+    "Bản_sửa_đổi": "HOP DONG MUA BAN HANG HOA (SUA DOI LAN 1)\nSo: 01/2024/HDMB - SDBS01\nCan cu Luat Thuong mai 2005;\nCan cu nhu cau va kha nang cua hai ben."
+  }
+}

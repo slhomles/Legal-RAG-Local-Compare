@@ -16,7 +16,7 @@ class LegalRetriever:
     
     def __init__(self):
         """Khởi tạo retriever với embedding model và vector store."""
-        print(f"[*] Đang tải embedding model {EMBEDDING_MODEL_NAME}...")
+        print(f"[*] Loading embedding model {EMBEDDING_MODEL_NAME}...")
         
         # Khởi tạo mô hình embedding
         model_kwargs = {'device': 'cpu'}
