@@ -34,10 +34,15 @@ def main() -> None:
     total_chunks = 0
     for file_path in docx_files:
         print(f"\n>> Dang xu ly file: {file_path.name}")
-        version = "v1"
 
-        chunks = doc_processor.process_file(str(file_path), version=version)
+        chunks = doc_processor.process_file(str(file_path))
         print(f"  + Da chia thanh {len(chunks)} doan (chunks).")
+        
+        if chunks:
+            first_chunk_meta = chunks[0]["metadata"]
+            doc_id = first_chunk_meta.get("document_id", "?")
+            version = first_chunk_meta.get("version", "?")
+            print(f"  + Document ID: {doc_id}, Version: {version}")
 
         if not chunks:
             continue

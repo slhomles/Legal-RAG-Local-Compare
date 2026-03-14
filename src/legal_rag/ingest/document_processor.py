@@ -1,6 +1,6 @@
 ﻿import re
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import docx
 
@@ -20,6 +20,53 @@ class DocumentProcessor:
         self.structure_regex = re.compile(STRUCTURE_CHUNK_REGEX, re.MULTILINE)
         self.generic_heading_regex = re.compile(GENERIC_HEADING_REGEX, re.MULTILINE)
         self.def_regex = re.compile(DEFINITION_REGEX, re.MULTILINE)
+    
+    @staticmethod
+    def _extract_document_id_and_version(filename: str) -> tuple[str, str]:
+        """
+        Trích xuất document_id và version từ tên file.
+        Ví dụ: "Hop_dong_A_v1.docx" → ("Hop_dong_A", "v1")
+        """
+        name_without_ext = Path(filename).stem
+        match = re.search(r'_v(\d+)$', name_without_ext, re.IGNORECASE)
+        
+        if match:
+            version = f"v{match.group(1)}"
+            document_id = name_without_ext[:match.start()]
+            return document_id, version
+        
+        return name_without_ext, "v1"
+    
+    @staticmethod
+    def _normalize_clause_id(heading: str) -> str:
+        """
+        Chuẩn hóa clause_id từ heading.
+        """
+        if not heading:
+            return "GENERAL"
+        
+        heading = heading.strip()
+        
+        # Pattern cho "Điều/Article X"
+        match = re.search(r'(Điều|Article)\s+(\d+)', heading, re.IGNORECASE)
+        if match:
+            num = int(match.group(2))
+            return f'CLAUSE_{num:03d}'
+        
+        # Pattern cho "Chương/Chapter X"
+        match = re.search(r'(Chương|Chapter)\s+([IVXivx]+)', heading, re.IGNORECASE)
+        if match:
+            roman = match.group(2).upper()
+            return f'CHAPTER_{roman}'
+        
+        # Pattern cho "Mục/Section X.Y.Z"
+        match = re.search(r'(Mục|Section)\s+([\d.]+)', heading, re.IGNORECASE)
+        if match:
+            num_str = match.group(2).replace('.', '_')
+            return f'SECTION_{num_str}'
+        
+        # Default
+        return "CLAUSE_" + heading.upper().replace(" ", "_")[:50]
         
     def read_docx(self, file_path: str) -> str:
         try:
@@ -125,7 +172,7 @@ class DocumentProcessor:
                 if part:
                     part_meta = chunk_meta.copy()
                     if part_idx > 1:
-                        part_meta["chunk_heading"] = f"{base_heading} (pháº§n {part_idx})"
+                        part_meta["chunk_heading"] = f"{base_heading} (phần {part_idx})"
                     target.append({"content": part, "metadata": part_meta})
                     part_idx += 1
 
@@ -140,8 +187,8 @@ class DocumentProcessor:
             preface = text[:first_start].strip()
             if preface:
                 preface_meta = metadata.copy()
-                preface_meta["chunk_heading"] = "Má»Ÿ Ä‘áº§u"
-                append_with_size_guard(chunks, preface, preface_meta, "Má»Ÿ Ä‘áº§u")
+                preface_meta["chunk_heading"] = "Mở đầu"
+                append_with_size_guard(chunks, preface, preface_meta, "Mở đầu")
 
         for i, match in enumerate(matches):
             start_index = match.start()
@@ -175,7 +222,7 @@ class DocumentProcessor:
 
         return self._fallback_chunk_by_length(text, metadata)
 
-    def process_file(self, file_path: str, version: str) -> List[Dict[str, Any]]:
+    def process_file(self, file_path: str, version: Optional[str] = None) -> List[Dict[str, Any]]:
 
         path_obj = Path(file_path)
         doc_name = path_obj.name
@@ -188,12 +235,23 @@ class DocumentProcessor:
             
         clean_txt = self.clean_text(text)
         
+        # Trích xuất document_id và version từ filename
+        document_id, extracted_version = self._extract_document_id_and_version(doc_name)
+        if version is None:
+            version = extracted_version
+        
         base_metadata = {
-            "doc_id": doc_name,
-            "version": version
+            "document_id": document_id,
+            "version": version,
+            "doc_id": doc_name
         }
         
         chunks = self.semantic_chunking(clean_txt, base_metadata)
+        
+        # Thêm clause_id cho mỗi chunk
+        for chunk in chunks:
+            heading = chunk["metadata"].get("chunk_heading", "")
+            chunk["metadata"]["clause_id"] = self._normalize_clause_id(heading)
         
         return chunks
 

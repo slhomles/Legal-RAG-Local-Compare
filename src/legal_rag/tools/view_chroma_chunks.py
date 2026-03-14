@@ -27,12 +27,18 @@ def _build_query(doc_id: str | None, contains: str | None) -> tuple[str, list]:
     query = f"""
         SELECT
             doc.id AS chunk_id,
-            COALESCE(doc_meta.string_value, 'unknown') AS doc_id,
+            COALESCE(document_meta.string_value, 'unknown') AS document_id,
+            COALESCE(version_meta.string_value, 'unknown') AS version,
+            COALESCE(clause_meta.string_value, 'unknown') AS clause_id,
             COALESCE(heading_meta.string_value, 'unknown') AS chunk_heading,
             COALESCE(doc.string_value, '') AS content
         FROM embedding_metadata AS doc
-        LEFT JOIN embedding_metadata AS doc_meta
-            ON doc_meta.id = doc.id AND doc_meta.key = 'doc_id'
+        LEFT JOIN embedding_metadata AS document_meta
+            ON document_meta.id = doc.id AND document_meta.key = 'document_id'
+        LEFT JOIN embedding_metadata AS version_meta
+            ON version_meta.id = doc.id AND version_meta.key = 'version'
+        LEFT JOIN embedding_metadata AS clause_meta
+            ON clause_meta.id = doc.id AND clause_meta.key = 'clause_id'
         LEFT JOIN embedding_metadata AS heading_meta
             ON heading_meta.id = doc.id AND heading_meta.key = 'chunk_heading'
         WHERE {" AND ".join(where)}
@@ -45,24 +51,30 @@ def _print_stats(conn: sqlite3.Connection) -> None:
     rows = conn.execute(
         """
         SELECT
-            COALESCE(doc_meta.string_value, 'unknown') AS doc_id,
+            COALESCE(document_meta.string_value, 'unknown') AS document_id,
+            COALESCE(version_meta.string_value, 'unknown') AS version,
             COUNT(*) AS n
         FROM embedding_metadata AS doc
-        LEFT JOIN embedding_metadata AS doc_meta
-            ON doc_meta.id = doc.id AND doc_meta.key = 'doc_id'
+        LEFT JOIN embedding_metadata AS document_meta
+            ON document_meta.id = doc.id AND document_meta.key = 'document_id'
+        LEFT JOIN embedding_metadata AS version_meta
+            ON version_meta.id = doc.id AND version_meta.key = 'version'
         WHERE doc.key = 'chroma:document'
-        GROUP BY doc_meta.string_value
-        ORDER BY n DESC, doc_id
+        GROUP BY document_meta.string_value, version_meta.string_value
+        ORDER BY n DESC, document_id
         """
     ).fetchall()
 
-    total = sum(r[1] for r in rows)
+    total = sum(r[2] for r in rows)
     print("=" * 70)
-    print("CHUNK STATS")
+    print("CHUNK STATS (Document ID | Version | Count)")
     print("=" * 70)
     print(f"Total chunks: {total}")
-    for doc_name, count in rows:
-        print(f"- {doc_name}: {count}")
+    print()
+    print(f"{'Document ID':<35} {'Version':<15} {'Count':<10}")
+    print("-" * 70)
+    for doc_id, version, count in rows:
+        print(f"{doc_id:<35} {version:<15} {count:<10}")
     print()
 
 
@@ -105,14 +117,16 @@ def main() -> None:
             print("No chunks matched the filter.")
             return
 
-        for idx, (chunk_id, doc_id, heading, content) in enumerate(rows, start=1):
+        for idx, (chunk_id, document_id, version, clause_id, heading, content) in enumerate(rows, start=1):
             preview = content[: args.preview_chars]
             if len(content) > args.preview_chars:
                 preview += "..."
 
             print(f"[{idx}] chunk_id={chunk_id}")
-            print(f"    doc_id={doc_id}")
-            print(f"    heading={heading}")
+            print(f"    document_id={document_id}")
+            print(f"    version={version}")
+            print(f"    clause_id={clause_id}")
+            print(f"    chunk_heading={heading}")
             print(f"    content={preview}")
             print()
     finally:
