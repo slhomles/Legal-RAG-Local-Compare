@@ -35,8 +35,16 @@ def main() -> None:
     for file_path in docx_files:
         print(f"\n>> Dang xu ly file: {file_path.name}")
 
-        chunks = doc_processor.process_file(str(file_path))
-        print(f"  + Da chia thanh {len(chunks)} doan (chunks).")
+        # Extract version from filename (e.g., "Hop_dong_A_v1.docx" -> "v1")
+        filename = file_path.name.lower()
+        version = "v1"  # default
+        if "_v" in filename:
+            # Extract "v1", "v2", etc.
+            version_part = filename.split("_v")[-1].split(".")[0]
+            version = f"v{version_part}"
+
+        chunks = doc_processor.process_file(str(file_path), version=version)
+        print(f"  + Da chia thanh {len(chunks)} doan (chunks). Version: {version}")
         
         if chunks:
             first_chunk_meta = chunks[0]["metadata"]
