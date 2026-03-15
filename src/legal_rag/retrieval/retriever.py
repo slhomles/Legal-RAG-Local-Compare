@@ -59,3 +59,37 @@ class LegalRetriever:
             "A": original_docs,
             "B": revised_docs
         }
+    def _merge_docs(self, docs: List[Any]) -> str:
+        if not docs:
+            return ""
+
+        merged_parts = []
+        seen = set()
+
+        for doc in docs:
+            content = doc.page_content.strip()
+            if content and content not in seen:
+                merged_parts.append(content)
+                seen.add(content)
+
+        return "\n\n".join(merged_parts)
+
+    def build_paired_context(
+        self,
+        document_id: str,
+        clause_id: str,
+        k: int = 5
+    ) -> Dict[str, Dict[str, str]]:
+        clause_id = self._normalize_clause_id(clause_id)
+
+        pair_result = self.retrieve_clause_pair(document_id, clause_id, k=k)
+
+        original_text = self._merge_docs(pair_result["A"])
+        revised_text = self._merge_docs(pair_result["B"])
+
+        return {
+            clause_id: {
+                "Bản_gốc": original_text,
+                "Bản_sửa_đổi": revised_text
+            }
+        }
