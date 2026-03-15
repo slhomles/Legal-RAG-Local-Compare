@@ -40,6 +40,31 @@ class DocumentProcessor:
         text = re.sub(r"\n{3,}", "\n\n", text)
         return text.strip()
 
+    def extract_clause_id(self, heading: str) -> str | None:
+        if not heading:
+            return None
+
+        heading = heading.strip()
+
+        patterns = [
+            r"(?i)(điều|dieu)\s+\d+",
+            r"(?i)(mục|muc)\s+[ivxlcdm0-9]+",
+            r"(?i)(chương|chuong)\s+[ivxlcdm0-9]+",
+            r"(?i)(phần|phan)\s+[ivxlcdm0-9]+",
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, heading)
+            if match:
+                return match.group(0).strip().title()
+
+        return None
+    def normalize_clause_input(self, clause_id: str) -> str:
+        if not clause_id:
+            return ""
+        clause_id = re.sub(r"\s+", " ", clause_id.strip())
+        return clause_id.title()
+
     def _fallback_chunk_by_length(self, text: str, metadata: Dict[str, Any]) -> List[Dict[str, Any]]:
         if not text:
             return []
@@ -59,7 +84,8 @@ class DocumentProcessor:
             chunk_content = text[start:end].strip()
             if chunk_content:
                 chunk_meta = metadata.copy()
-                chunk_meta["chunk_heading"] = f"Äoáº¡n {idx}"
+                chunk_meta["chunk_heading"] = f"Đoạn {idx}"
+                chunk_meta["clause_id"] = None
                 chunks.append({"content": chunk_content, "metadata": chunk_meta})
                 idx += 1
 
@@ -125,7 +151,7 @@ class DocumentProcessor:
                 if part:
                     part_meta = chunk_meta.copy()
                     if part_idx > 1:
-                        part_meta["chunk_heading"] = f"{base_heading} (pháº§n {part_idx})"
+                        part_meta["chunk_heading"] = f"{base_heading} (phần {part_idx})"
                     target.append({"content": part, "metadata": part_meta})
                     part_idx += 1
 
@@ -140,8 +166,9 @@ class DocumentProcessor:
             preface = text[:first_start].strip()
             if preface:
                 preface_meta = metadata.copy()
-                preface_meta["chunk_heading"] = "Má»Ÿ Ä‘áº§u"
-                append_with_size_guard(chunks, preface, preface_meta, "Má»Ÿ Ä‘áº§u")
+                preface_meta["clause_id"] = None
+                preface_meta["chunk_heading"] = "Mở đầu"
+                append_with_size_guard(chunks, preface, preface_meta, "Mở đầu")
 
         for i, match in enumerate(matches):
             start_index = match.start()
@@ -158,6 +185,7 @@ class DocumentProcessor:
 
             chunk_meta = metadata.copy()
             chunk_meta["chunk_heading"] = heading
+            chunk_meta["clause_id"] = self.extract_clause_id(heading)
             append_with_size_guard(chunks, chunk_content, chunk_meta, heading)
 
         return chunks
@@ -175,7 +203,7 @@ class DocumentProcessor:
 
         return self._fallback_chunk_by_length(text, metadata)
 
-    def process_file(self, file_path: str, version: str) -> List[Dict[str, Any]]:
+    def process_file(self, file_path: str, document_id: str, version: str) -> List[Dict[str, Any]]:
 
         path_obj = Path(file_path)
         doc_name = path_obj.name
@@ -189,10 +217,12 @@ class DocumentProcessor:
         clean_txt = self.clean_text(text)
         
         base_metadata = {
+            "document_id": document_id,
             "doc_id": doc_name,
-            "version": version
+            "source_file": doc_name,
+            "version": version,
         }
-        
+            
         chunks = self.semantic_chunking(clean_txt, base_metadata)
         
         return chunks

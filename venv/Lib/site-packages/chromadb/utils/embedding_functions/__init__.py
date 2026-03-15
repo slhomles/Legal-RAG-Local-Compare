@@ -23,7 +23,8 @@ from chromadb.utils.embedding_functions.google_embedding_function import (
     GooglePalmEmbeddingFunction,
     GoogleGenerativeAiEmbeddingFunction,
     GoogleVertexEmbeddingFunction,
-    GoogleGenaiEmbeddingFunction,
+    GoogleGeminiEmbeddingFunction,
+    GoogleGenaiEmbeddingFunction,  # Backward compatibility alias
 )
 from chromadb.utils.embedding_functions.ollama_embedding_function import (
     OllamaEmbeddingFunction,
@@ -91,6 +92,9 @@ from chromadb.utils.embedding_functions.chroma_cloud_splade_embedding_function i
 from chromadb.utils.embedding_functions.chroma_bm25_embedding_function import (
     ChromaBm25EmbeddingFunction,
 )
+from chromadb.utils.embedding_functions.perplexity_embedding_function import (
+    PerplexityEmbeddingFunction,
+)
 
 
 # Get all the class names for backward compatibility
@@ -103,7 +107,8 @@ _all_classes: Set[str] = {
     "GooglePalmEmbeddingFunction",
     "GoogleGenerativeAiEmbeddingFunction",
     "GoogleVertexEmbeddingFunction",
-    "GoogleGenaiEmbeddingFunction",
+    "GoogleGeminiEmbeddingFunction",
+    "GoogleGenaiEmbeddingFunction",  # Backward compatibility alias
     "OllamaEmbeddingFunction",
     "InstructorEmbeddingFunction",
     "JinaEmbeddingFunction",
@@ -127,6 +132,7 @@ _all_classes: Set[str] = {
     "ChromaCloudQwenEmbeddingFunction",
     "ChromaCloudSpladeEmbeddingFunction",
     "ChromaBm25EmbeddingFunction",
+    "PerplexityEmbeddingFunction"
 }
 
 
@@ -144,7 +150,8 @@ known_embedding_functions: Dict[str, Type[EmbeddingFunction]] = {  # type: ignor
     "google_palm": GooglePalmEmbeddingFunction,
     "google_generative_ai": GoogleGenerativeAiEmbeddingFunction,
     "google_vertex": GoogleVertexEmbeddingFunction,
-    "google_genai": GoogleGenaiEmbeddingFunction,
+    "google_gemini": GoogleGeminiEmbeddingFunction,
+    "google_genai": GoogleGeminiEmbeddingFunction,  # Backward compatibility alias
     "ollama": OllamaEmbeddingFunction,
     "instructor": InstructorEmbeddingFunction,
     "jina": JinaEmbeddingFunction,
@@ -163,6 +170,7 @@ known_embedding_functions: Dict[str, Type[EmbeddingFunction]] = {  # type: ignor
     "cloudflare_workers_ai": CloudflareWorkersAIEmbeddingFunction,
     "together_ai": TogetherAIEmbeddingFunction,
     "chroma-cloud-qwen": ChromaCloudQwenEmbeddingFunction,
+    "perplexity": PerplexityEmbeddingFunction,
 }
 
 sparse_known_embedding_functions: Dict[str, Type[SparseEmbeddingFunction]] = {  # type: ignore
@@ -268,7 +276,8 @@ __all__ = [
     "GooglePalmEmbeddingFunction",
     "GoogleGenerativeAiEmbeddingFunction",
     "GoogleVertexEmbeddingFunction",
-    "GoogleGenaiEmbeddingFunction",
+    "GoogleGeminiEmbeddingFunction",
+    "GoogleGenaiEmbeddingFunction",  # Backward compatibility alias
     "OllamaEmbeddingFunction",
     "InstructorEmbeddingFunction",
     "JinaEmbeddingFunction",
@@ -291,6 +300,7 @@ __all__ = [
     "ChromaCloudQwenEmbeddingFunction",
     "ChromaCloudSpladeEmbeddingFunction",
     "ChromaBm25EmbeddingFunction",
+    "PerplexityEmbeddingFunction",
     "register_embedding_function",
     "config_to_embedding_function",
     "known_embedding_functions",
