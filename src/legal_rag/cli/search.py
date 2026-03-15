@@ -1,6 +1,6 @@
 import argparse
 import textwrap
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from legal_rag.retrieval import LegalRetriever
 
@@ -9,8 +9,14 @@ def add_search_arguments(parser: argparse.ArgumentParser) -> argparse.ArgumentPa
     parser.add_argument("query", help='Cau truy van, vi du: "Quy dinh ve thanh toan"')
     parser.add_argument("-k", "--top-k", type=int, default=3, help="So ket qua muon lay")
     parser.add_argument("--doc-id", help="Loc theo doc_id")
-    parser.add_argument("--version", help="Loc theo version")
-    parser.add_argument("--logical-id", help="Loc theo logical_id")
+    parser.add_argument(
+        "--version",
+        help="Loc theo version (ho tro nhieu version phan tach bang dau phay, vd: v1,v2)",
+    )
+    parser.add_argument(
+        "--clause-id",
+        help="Loc chinh xac theo dieu khoan (logical_id), vd: dieu_3",
+    )
     return parser
 
 
@@ -36,21 +42,43 @@ def run_search(args: argparse.Namespace) -> List[Dict[str, Any]]:
     return results
 
 
-def build_filter(args: argparse.Namespace) -> Optional[Dict[str, str]]:
-    filter_dict: Dict[str, str] = {}
+def build_filter(args: argparse.Namespace) -> Optional[Dict[str, Any]]:
+    """
+    Xay dung ChromaDB where-filter tu cac tham so CLI.
+
+    Ho tro:
+    - --doc-id       : loc theo doc_id (exact match)
+    - --clause-id    : loc theo logical_id (exact match), vd: dieu_3
+    - --version A,B  : loc theo nhieu version cung luc (dung $in)
+
+    Khi co nhieu dieu kien, ket hop bang $and.
+    """
+    conditions: List[Dict[str, Any]] = []
+
     if args.doc_id:
-        filter_dict["doc_id"] = args.doc_id
+        conditions.append({"doc_id": args.doc_id})
+
+    if args.clause_id:
+        conditions.append({"logical_id": args.clause_id})
+
     if args.version:
-        filter_dict["version"] = args.version
-    if args.logical_id:
-        filter_dict["logical_id"] = args.logical_id
-    return filter_dict or None
+        versions = [v.strip() for v in args.version.split(",") if v.strip()]
+        if len(versions) == 1:
+            conditions.append({"version": versions[0]})
+        elif len(versions) > 1:
+            conditions.append({"version": {"$in": versions}})
+
+    if not conditions:
+        return None
+    if len(conditions) == 1:
+        return conditions[0]
+    return {"$and": conditions}
 
 
 def print_search_results(
     query: str,
     top_k: int,
-    filter_dict: Optional[Dict[str, str]],
+    filter_dict: Optional[Dict[str, Any]],
     results: List[Dict[str, Any]],
 ) -> None:
     separator = "=" * 100
@@ -77,7 +105,7 @@ def print_search_results(
         print(f"ID         : {result['id']}")
         print(f"Heading    : {metadata.get('chunk_heading', 'N/A')}")
         print(f"Hierarchy  : {metadata.get('hierarchy_path', 'N/A')}")
-        print(f"Logical ID : {metadata.get('logical_id', 'N/A')}")
+        print(f"Clause ID  : {metadata.get('logical_id', 'N/A')}")
         print(f"Chunk Index: {metadata.get('chunk_index', 'N/A')}")
         print("Content    :")
         print(textwrap.fill(result["content"], width=100, initial_indent="  ", subsequent_indent="  "))
