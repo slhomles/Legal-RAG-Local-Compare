@@ -1,8 +1,10 @@
 import argparse
+import json
 import textwrap
 from typing import Any, Dict, List, Optional, Union
 
 from legal_rag.retrieval import LegalRetriever
+from legal_rag.retrieval.context_pairing import ContextPairer
 
 
 def add_search_arguments(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
@@ -17,6 +19,11 @@ def add_search_arguments(parser: argparse.ArgumentParser) -> argparse.ArgumentPa
         "--clause-id",
         help="Loc chinh xac theo dieu khoan (logical_id), vd: dieu_3",
     )
+    parser.add_argument(
+        "--pair",
+        action="store_true",
+        help="Ghep cap cac ket qua tra ve thanh JSON nhom theo dieu khoan va phien ban",
+    )
     return parser
 
 
@@ -25,7 +32,7 @@ def add_search_parser(subparsers: argparse._SubParsersAction) -> argparse.Argume
     return add_search_arguments(parser)
 
 
-def run_search(args: argparse.Namespace) -> List[Dict[str, Any]]:
+def run_search(args: argparse.Namespace) -> Union[List[Dict[str, Any]], Dict[str, Dict[str, str]]]:
     filter_dict = build_filter(args)
     retriever = LegalRetriever()
     results = retriever.retrieve(
@@ -33,25 +40,25 @@ def run_search(args: argparse.Namespace) -> List[Dict[str, Any]]:
         k=args.top_k,
         filter_dict=filter_dict,
     )
-    print_search_results(
-        query=args.query,
-        top_k=args.top_k,
-        filter_dict=filter_dict,
-        results=results,
-    )
-    return results
+
+    if args.pair:
+        pairer = ContextPairer()
+        paired_results = pairer.pair_chunks(results)
+        print_paired_results(paired_results)
+        return paired_results
+    else:
+        print_search_results(
+            query=args.query,
+            top_k=args.top_k,
+            filter_dict=filter_dict,
+            results=results,
+        )
+        return results
 
 
 def build_filter(args: argparse.Namespace) -> Optional[Dict[str, Any]]:
     """
     Xay dung ChromaDB where-filter tu cac tham so CLI.
-
-    Ho tro:
-    - --doc-id       : loc theo doc_id (exact match)
-    - --clause-id    : loc theo logical_id (exact match), vd: dieu_3
-    - --version A,B  : loc theo nhieu version cung luc (dung $in)
-
-    Khi co nhieu dieu kien, ket hop bang $and.
     """
     conditions: List[Dict[str, Any]] = []
 
@@ -73,6 +80,15 @@ def build_filter(args: argparse.Namespace) -> Optional[Dict[str, Any]]:
     if len(conditions) == 1:
         return conditions[0]
     return {"$and": conditions}
+
+
+def print_paired_results(paired_results: Dict[str, Dict[str, str]]) -> None:
+    separator = "=" * 100
+    print(separator)
+    print("CONTEXT PAIRING JSON RESULTS")
+    print(separator)
+    print(json.dumps(paired_results, indent=2, ensure_ascii=False))
+    print(separator)
 
 
 def print_search_results(
@@ -117,7 +133,7 @@ def build_direct_parser() -> argparse.ArgumentParser:
     return add_search_arguments(parser)
 
 
-def main(argv: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+def main(argv: Optional[List[str]] = None) -> Union[List[Dict[str, Any]], Dict[str, Dict[str, str]]]:
     parser = build_direct_parser()
     args = parser.parse_args(argv)
     return run_search(args)
