@@ -2,3 +2,4 @@ chromadb
 python-docx
 torch
 transformers
+requests
