@@ -3,3 +3,4 @@ python-docx
 torch
 transformers
 requests
+gradio

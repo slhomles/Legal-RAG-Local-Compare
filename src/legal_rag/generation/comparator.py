@@ -19,6 +19,7 @@ from legal_rag.config import (
     LLM_MAX_TOKENS,
     LLM_MODEL_NAME,
     LLM_TEMPERATURE,
+    LLM_TIMEOUT,
     OLLAMA_BASE_URL,
 )
 from legal_rag.generation.prompts import (
@@ -261,14 +262,14 @@ class DocumentComparator:
         }
 
         try:
-            resp = requests.post(url, json=payload, timeout=120)
+            resp = requests.post(url, json=payload, timeout=LLM_TIMEOUT)
             resp.raise_for_status()
             data = resp.json()
             return data.get("message", {}).get("content", "")
         except requests.ConnectionError:
             return "[LỖI] Không thể kết nối đến Ollama. Hãy đảm bảo Ollama đang chạy tại " + OLLAMA_BASE_URL
         except requests.Timeout:
-            return "[LỖI] Ollama phản hồi quá thời gian chờ (timeout 120s)."
+            return f"[LỖI] Ollama phản hồi quá thời gian chờ (timeout {LLM_TIMEOUT}s)."
         except Exception as exc:
             return f"[LỖI] Lỗi khi gọi LLM: {exc}"
 
@@ -293,11 +294,11 @@ class DocumentComparator:
             re.IGNORECASE,
         )
         old_pattern = re.compile(
-            r"\*{0,2}Nội dung cũ\*{0,2}\s*[:：]\s*[«\""]?(.*?)[»\""]?\s*$",
+            r"\*{0,2}N\u1ed9i dung c\u0169\*{0,2}\s*[:\uff1a]\s*[\u00ab\"'\u2018\u201c]?(.*?)[\u00bb\"'\u2019\u201d]?\s*$",
             re.IGNORECASE | re.MULTILINE,
         )
         new_pattern = re.compile(
-            r"\*{0,2}Nội dung mới\*{0,2}\s*[:：]\s*[«\""]?(.*?)[»\""]?\s*$",
+            r"\*{0,2}N\u1ed9i dung m\u1edbi\*{0,2}\s*[:\uff1a]\s*[\u00ab\"'\u2018\u201c]?(.*?)[\u00bb\"'\u2019\u201d]?\s*$",
             re.IGNORECASE | re.MULTILINE,
         )
         loc_pattern = re.compile(

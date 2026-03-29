@@ -71,11 +71,12 @@ CHUNK_OVERLAP_TOKENS = 64
 # Chuẩn bị cho Tuần 7-8: Sinh báo cáo so sánh [cite: 36]
 # ==========================================
 OLLAMA_BASE_URL = "http://localhost:11434"
-LLM_MODEL_NAME = "qwen2.5:7b"
+LLM_MODEL_NAME = "qwen2.5:latest"
 
 # THÔNG SỐ QUAN TRỌNG NHẤT:
 # Temperature = 0.0 ép mô hình trả lời chính xác, không sáng tạo
 # Giúp tuân thủ nguyên tắc "không bằng chứng -> không kết luận" [cite: 36]
 # và không tự ý đưa ra tư vấn pháp lý [cite: 19]
-LLM_TEMPERATURE = 0.0 
+LLM_TEMPERATURE = 0.0
 LLM_MAX_TOKENS = 4096 # Đủ dài để sinh báo cáo chi tiết
+LLM_TIMEOUT = 300     # Giây — tăng cao cho CPU-only inference

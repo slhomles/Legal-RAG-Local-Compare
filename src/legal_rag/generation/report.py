@@ -17,6 +17,7 @@ from legal_rag.config import (
     LLM_MAX_TOKENS,
     LLM_MODEL_NAME,
     LLM_TEMPERATURE,
+    LLM_TIMEOUT,
     OLLAMA_BASE_URL,
 )
 from legal_rag.generation.prompts import (
@@ -69,10 +70,16 @@ class ReportGenerator:
                 changes_text=changes_text,
             )
             summary = self._call_llm(SYSTEM_PROMPT, user_prompt)
-            guardrail_ok, violations = check_guardrails(summary)
 
-            if not guardrail_ok:
-                summary = f"{GUARDRAIL_WARNING}\n\n{summary}"
+            # Fallback khi LLM timeout hoặc lỗi kết nối
+            if summary.startswith("[LOI]"):
+                summary = self._rule_based_summary(changes_detail, doc_id, version_old, version_new)
+                guardrail_ok = True
+                violations = []
+            else:
+                guardrail_ok, violations = check_guardrails(summary)
+                if not guardrail_ok:
+                    summary = f"{GUARDRAIL_WARNING}\n\n{summary}"
 
         return {
             "doc_id": doc_id,
@@ -114,11 +121,13 @@ class ReportGenerator:
         """
         lines: List[str] = []
 
+        MAX_TEXT = 120  # truncate de giam kich thuoc prompt cho CPU inference
+
         for i, change in enumerate(changes, 1):
             heading = change.get("heading", "")
             change_type = change.get("type", "")
-            old_text = change.get("old_text", "")
-            new_text = change.get("new_text", "")
+            old_text = change.get("old_text", "")[:MAX_TEXT]
+            new_text = change.get("new_text", "")[:MAX_TEXT]
             location = change.get("location", "")
 
             line = f"{i}. [{heading}] Loai: {change_type}"
@@ -144,6 +153,37 @@ class ReportGenerator:
         return "\n\n".join(lines)
 
     # ------------------------------------------------------------------
+    # Rule-based fallback summary (khi LLM timeout)
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _rule_based_summary(
+        changes: List[Dict[str, Any]],
+        doc_id: str,
+        version_old: str,
+        version_new: str,
+    ) -> str:
+        """Tạo tóm tắt rule-based khi LLM không khả dụng."""
+        type_counts: Dict[str, int] = {}
+        clause_set: set = set()
+        for c in changes:
+            t = c.get("type", "KHAC")
+            type_counts[t] = type_counts.get(t, 0) + 1
+            clause_set.add(c.get("heading", c.get("clause_id", "")))
+
+        lines = [
+            f"Tom tat thay doi giua {version_old} va {version_new} cua tai lieu {doc_id}:",
+            f"- Tong so thay doi phat hien: {len(changes)}",
+        ]
+        for t, cnt in sorted(type_counts.items()):
+            lines.append(f"  + {t}: {cnt} thay doi")
+
+        if clause_set:
+            lines.append(f"- Cac dieu khoan bi anh huong: {', '.join(sorted(clause_set)[:5])}")
+
+        lines.append("(Tom tat duoc tao tu quy tac do LLM khong phan hoi trong thoi gian cho.)")
+        return "\n".join(lines)
+
+    # ------------------------------------------------------------------
     # LLM call
     # ------------------------------------------------------------------
     @staticmethod
@@ -164,7 +204,7 @@ class ReportGenerator:
         }
 
         try:
-            resp = requests.post(url, json=payload, timeout=120)
+            resp = requests.post(url, json=payload, timeout=LLM_TIMEOUT)
             resp.raise_for_status()
             data = resp.json()
             return data.get("message", {}).get("content", "")
@@ -174,7 +214,7 @@ class ReportGenerator:
                 "Hay dam bao Ollama dang chay tai " + OLLAMA_BASE_URL
             )
         except requests.Timeout:
-            return "[LOI] Ollama phan hoi qua thoi gian cho (timeout 120s)."
+            return f"[LOI] Ollama phan hoi qua thoi gian cho (timeout {LLM_TIMEOUT}s)."
         except Exception as exc:
             return f"[LOI] Loi khi goi LLM: {exc}"
 
