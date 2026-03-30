@@ -1,8 +1,9 @@
-# Lưu trữ các prompt template ép LLM tuân thủ "không bằng chứng -> không kết luận" [cite: 36]
+# Prompt template cho compare và report, tuân thủ nguyên tắc "không bằng chứng -> không kết luận"[cite: 36]
 import json
 from typing import Any, Dict
 
 
+# Prompt template cho compare và report, tuân thủ nguyên tắc "không bằng chứng -> không kết luận"
 COMPARE_SYSTEM_PROMPT = """
 Bạn là trợ lý so sánh văn bản pháp lý chạy cục bộ.
 
@@ -85,6 +86,74 @@ YÊU CẦU:
 6. Không đánh giá tài liệu đúng luật hay sai luật
 7. Chỉ mô tả khác biệt văn bản
 8. Trả về đúng JSON, không thêm giải thích ngoài JSON
+
+JSON schema mong muốn:
+{schema_str}
+"""
+
+
+REPORT_SYSTEM_PROMPT = """
+Bạn là trợ lý so sánh văn bản pháp lý chạy cục bộ.
+
+NHIỆM VỤ:
+- Tóm tắt các thay đổi quan trọng dựa trên danh sách thay đổi đã được phát hiện.
+- Chỉ sử dụng dữ liệu đầu vào được cung cấp.
+- Không được suy đoán.
+- Không được đưa ra tư vấn pháp luật.
+- Không được đánh giá tính hợp pháp, hiệu lực hay rủi ro pháp lý của tài liệu.
+- Nếu không đủ dữ liệu, phải nói rõ là không đủ dữ liệu.
+
+YÊU CẦU:
+1. Chỉ tóm tắt những thay đổi đã có trong input.
+2. Không thêm thông tin ngoài input.
+3. Trả về đúng JSON.
+4. "risk_note" phải luôn là:
+   "Chỉ mô tả khác biệt văn bản, không đánh giá pháp lý."
+"""
+
+
+def get_report_output_schema() -> Dict[str, Any]:
+    return {
+        "overview": "string",
+        "key_changes": [
+            "string"
+        ],
+        "risk_note": "string"
+    }
+
+
+def build_report_user_prompt(
+    document_id: str,
+    compare_results: Dict[str, Any]
+) -> str:
+    schema_str = json.dumps(
+        get_report_output_schema(),
+        ensure_ascii=False,
+        indent=2
+    )
+
+    compare_results_str = json.dumps(
+        compare_results,
+        ensure_ascii=False,
+        indent=2
+    )
+
+    return f"""
+Hãy tóm tắt các thay đổi quan trọng của tài liệu.
+
+document_id: {document_id}
+
+DỮ LIỆU ĐẦU VÀO:
+{compare_results_str}
+
+YÊU CẦU:
+1. Viết overview ngắn gọn về tình trạng thay đổi chung của tài liệu.
+2. Liệt kê các thay đổi quan trọng nhất trong "key_changes".
+3. Không suy đoán.
+4. Không đưa ra kết luận pháp lý.
+5. Không đánh giá tài liệu đúng luật hay sai luật.
+6. Nếu không có thay đổi quan trọng, hãy nói rõ.
+7. Trả về đúng JSON, không thêm giải thích ngoài JSON.
 
 JSON schema mong muốn:
 {schema_str}

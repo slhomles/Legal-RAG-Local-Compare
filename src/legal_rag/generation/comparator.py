@@ -9,8 +9,11 @@ import requests
 
 from legal_rag.generation.prompts import (
     COMPARE_SYSTEM_PROMPT,
+    REPORT_SYSTEM_PROMPT,
     build_compare_user_prompt,
+    build_report_user_prompt,
 )
+
 from legal_rag.generation.guardrails import (
     build_safe_fallback,
     validate_compare_output,
@@ -69,6 +72,41 @@ class LegalComparator:
                 candidate = raw_output[start : end + 1]
                 return json.loads(candidate)
             raise
+
+
+    def _parse_report_output(self, raw_output: str) -> Dict[str, Any]:
+        try:
+            return json.loads(raw_output)
+        except json.JSONDecodeError:
+            start = raw_output.find("{")
+            end = raw_output.rfind("}")
+            if start != -1 and end != -1 and end > start:
+                candidate = raw_output[start:end + 1]
+                return json.loads(candidate)
+            raise
+
+
+    def _normalize_report_output(self, result: Dict[str, Any]) -> Dict[str, Any]:
+        if "overview" not in result or result["overview"] is None:
+            result["overview"] = "Không đủ dữ liệu để tóm tắt."
+        elif not isinstance(result["overview"], str):
+            result["overview"] = str(result["overview"])
+
+        if "key_changes" not in result or result["key_changes"] is None:
+            result["key_changes"] = []
+        elif not isinstance(result["key_changes"], list):
+            result["key_changes"] = [str(result["key_changes"])]
+
+        normalized_key_changes = []
+        for item in result["key_changes"]:
+            if item is None:
+                continue
+            normalized_key_changes.append(str(item))
+        result["key_changes"] = normalized_key_changes
+
+        result["risk_note"] = "Chỉ mô tả khác biệt văn bản, không đánh giá pháp lý."
+
+        return result
 
     def _normalize_to_list(self, value: Any) -> List[Any]:
         if value is None:
@@ -533,3 +571,57 @@ class LegalComparator:
             "changed_clauses": len(changed_results),
             "results": results,
         }
+
+    def generate_summary_report(
+        self,
+        document_id: str,
+        compare_results: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        system_prompt = REPORT_SYSTEM_PROMPT
+        user_prompt = build_report_user_prompt(
+            document_id=document_id,
+            compare_results=compare_results,
+        )
+
+        try:
+            raw_output = self._call_ollama(system_prompt, user_prompt)
+            print("\n[RAW REPORT OUTPUT]")
+            print(raw_output)
+
+            result = self._parse_report_output(raw_output)
+            print("\n[PARSED REPORT RESULT]")
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+
+            result = self._normalize_report_output(result)
+        except Exception as e:
+            print("\n[REPORT ERROR]")
+            print(repr(e))
+            return {
+                "overview": "Không đủ dữ liệu để tóm tắt.",
+                "key_changes": [],
+                "risk_note": "Chỉ mô tả khác biệt văn bản, không đánh giá pháp lý."
+            }
+
+        return result
+    
+    def build_compare_report(
+        self,
+        retriever: Any,
+        document_id: str,
+        clause_ids: List[str],
+        k: int = 4
+    ) -> Dict[str, Any]:
+        compare_results = self.compare_clause_list(
+            retriever=retriever,
+            document_id=document_id,
+            clause_ids=clause_ids,
+            k=k,
+        )
+
+        summary_report = self.generate_summary_report(
+            document_id=document_id,
+            compare_results=compare_results,
+        )
+
+        compare_results["summary_report"] = summary_report
+        return compare_results
