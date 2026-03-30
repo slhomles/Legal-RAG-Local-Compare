@@ -35,7 +35,13 @@ else:  # pragma: win32 no cover
         has_fcntl = True
 
     class UnixFileLock(BaseFileLock):
-        """Uses the :func:`fcntl.flock` to hard lock the lock file on unix systems."""
+        """
+        Uses the :func:`fcntl.flock` to hard lock the lock file on unix systems.
+
+        Lock file cleanup: Unix and macOS delete the lock file reliably after release, even in
+        multi-threaded scenarios. Unlike Windows, Unix allows unlinking files that other processes
+        have open.
+        """
 
         def _acquire(self) -> None:  # noqa: C901, PLR0912
             ensure_directory_exists(self.lock_file)
@@ -100,7 +106,8 @@ else:  # pragma: win32 no cover
             with suppress(OSError):
                 Path(self.lock_file).unlink()
             fcntl.flock(fd, fcntl.LOCK_UN)
-            os.close(fd)
+            with suppress(OSError):  # close can raise EIO on FUSE/Docker bind-mount filesystems after unlink
+                os.close(fd)
 
 
 __all__ = [

@@ -13,6 +13,22 @@ if hasattr(sys.stderr, "buffer"):
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 
 
+def parse_document_info(file_name: str) -> tuple[str, str]:
+    """
+    Ví dụ:
+    Hop_dong_A_v1.docx -> ("Hop_dong_A", "A")
+    Hop_dong_A_v2.docx -> ("Hop_dong_A", "B")
+    """
+    stem = Path(file_name).stem
+
+    if stem.endswith("_v1"):
+        return stem[:-3], "A"
+    if stem.endswith("_v2"):
+        return stem[:-3], "B"
+
+    return stem, "A"
+
+
 def main() -> None:
     print("=" * 50)
     print("BAT DAU CHAY PIPELINE NHAP DU LIEU (INGESTION)")
@@ -34,9 +50,12 @@ def main() -> None:
     total_chunks = 0
     for file_path in docx_files:
         print(f"\n>> Dang xu ly file: {file_path.name}")
-        version = "v1"
-
-        chunks = doc_processor.process_file(str(file_path), version=version)
+        document_id, version = parse_document_info(file_path.name)
+        chunks = doc_processor.process_file(
+            str(file_path),
+            document_id=document_id,
+            version=version
+        )
         print(f"  + Da chia thanh {len(chunks)} doan (chunks).")
 
         if not chunks:

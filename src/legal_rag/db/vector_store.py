@@ -73,3 +73,12 @@ class VectorStoreManager:
         )
         return results
 
+    def reset_collection(self):
+        print(f"[*] Dang xoa collection: {CHROMA_COLLECTION_NAME}")
+        self.vector_db.delete_collection()
+        self.vector_db = Chroma(
+            collection_name=CHROMA_COLLECTION_NAME,
+            embedding_function=self.embeddings,
+            persist_directory=str(CHROMA_DB_DIR)
+        )
+        print("[+] Da reset collection thanh cong.")
