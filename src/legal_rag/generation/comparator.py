@@ -1,6 +1,8 @@
 # Gọi API Ollama (Qwen 2.5) để so sánh, phát hiện thêm/xóa/sửa và tóm tắt [cite: 17]
 
 import json
+import re
+import unicodedata
 from typing import Any, Dict, List, Tuple
 
 import requests
@@ -109,6 +111,183 @@ class LegalComparator:
             }
 
         return {}
+    
+
+    def _strip_accents(self, text: str) -> str:
+        if not text:
+            return ""
+
+        normalized = unicodedata.normalize("NFD", text)
+        return "".join(ch for ch in normalized if unicodedata.category(ch) != "Mn")
+
+    
+    def _normalize_match_text(self, text: str) -> str:
+        if not text:
+            return ""
+
+        text = self._strip_accents(text)
+        text = text.lower()
+        text = re.sub(r"[^\w\s]", " ", text)
+        text = re.sub(r"\s+", " ", text)
+        return text.strip()
+    
+
+    def _find_best_citation(self, evidence: str, docs: List[Any]) -> Dict[str, Any]:
+        if not evidence or not docs:
+            return {}
+
+        evidence = evidence.strip()
+        if not evidence:
+            return {}
+
+        normalized_evidence = self._normalize_match_text(evidence)
+        evidence_tokens = set(normalized_evidence.split())
+
+        best_result = {}
+        best_score = -1
+
+        for doc in docs:
+            text = self._extract_text(doc)
+            metadata = self._extract_metadata(doc)
+
+            if not text:
+                continue
+
+            # 1) Match exact
+            char_start = text.find(evidence)
+            if char_start != -1:
+                char_end = char_start + len(evidence)
+                matched_text = text[char_start:char_end]
+                score = len(matched_text)
+
+                citation = {
+                    "source_file": metadata.get("source_file"),
+                    "doc_id": metadata.get("doc_id"),
+                    "document_id": metadata.get("document_id"),
+                    "version": metadata.get("version"),
+                    "clause_id": metadata.get("clause_id"),
+                    "chunk_heading": metadata.get("chunk_heading"),
+                    "matched_text": matched_text,
+                    "char_start": char_start,
+                    "char_end": char_end,
+                    "match_type": "exact",
+                }
+
+                if score > best_score:
+                    best_score = score
+                    best_result = citation
+
+                continue
+
+            # 2) Match không phân biệt hoa thường
+            lower_text = text.lower()
+            lower_evidence = evidence.lower()
+            char_start = lower_text.find(lower_evidence)
+            if char_start != -1:
+                char_end = char_start + len(evidence)
+                matched_text = text[char_start:char_end]
+                score = len(matched_text)
+
+                citation = {
+                    "source_file": metadata.get("source_file"),
+                    "doc_id": metadata.get("doc_id"),
+                    "document_id": metadata.get("document_id"),
+                    "version": metadata.get("version"),
+                    "clause_id": metadata.get("clause_id"),
+                    "chunk_heading": metadata.get("chunk_heading"),
+                    "matched_text": matched_text,
+                    "char_start": char_start,
+                    "char_end": char_end,
+                    "match_type": "case_insensitive",
+                }
+
+                if score > best_score:
+                    best_score = score
+                    best_result = citation
+
+                continue
+
+            # 3) Match theo text đã normalize (bỏ dấu, bỏ dấu câu, chuẩn hóa khoảng trắng)
+            normalized_text = self._normalize_match_text(text)
+            if normalized_evidence and normalized_evidence in normalized_text:
+                score = len(normalized_evidence)
+
+                citation = {
+                    "source_file": metadata.get("source_file"),
+                    "doc_id": metadata.get("doc_id"),
+                    "document_id": metadata.get("document_id"),
+                    "version": metadata.get("version"),
+                    "clause_id": metadata.get("clause_id"),
+                    "chunk_heading": metadata.get("chunk_heading"),
+                    "matched_text": evidence,
+                    "char_start": None,
+                    "char_end": None,
+                    "match_type": "normalized",
+                }
+
+                if score > best_score:
+                    best_score = score
+                    best_result = citation
+
+                continue
+
+            # 4) Fallback: tính độ overlap token để chọn chunk gần nhất
+            normalized_text_tokens = set(normalized_text.split())
+            overlap = evidence_tokens.intersection(normalized_text_tokens)
+            overlap_score = len(overlap)
+
+            if overlap_score > best_score and overlap_score > 0:
+                citation = {
+                    "source_file": metadata.get("source_file"),
+                    "doc_id": metadata.get("doc_id"),
+                    "document_id": metadata.get("document_id"),
+                    "version": metadata.get("version"),
+                    "clause_id": metadata.get("clause_id"),
+                    "chunk_heading": metadata.get("chunk_heading"),
+                    "matched_text": evidence,
+                    "char_start": None,
+                    "char_end": None,
+                    "match_type": "token_overlap",
+                }
+
+                best_score = overlap_score
+                best_result = citation
+
+        return best_result
+
+
+    def _attach_citations_to_result(
+        self,
+        result: Dict[str, Any],
+        original_docs: List[Any],
+        revised_docs: List[Any],
+    ) -> Dict[str, Any]:
+        changes = result.get("changes", [])
+
+        if not isinstance(changes, list):
+            return result
+
+        for change in changes:
+            evidence_from_original = change.get("evidence_from_original")
+            evidence_from_revised = change.get("evidence_from_revised")
+
+            original_citation = self._find_best_citation(
+                evidence=evidence_from_original,
+                docs=original_docs,
+            ) if evidence_from_original else {}
+
+            revised_citation = self._find_best_citation(
+                evidence=evidence_from_revised,
+                docs=revised_docs,
+            ) if evidence_from_revised else {}
+
+            change["citations"] = {
+                "original": original_citation if original_citation else None,
+                "revised": revised_citation if revised_citation else None,
+            }
+
+        return result
+
 
     def _merge_unique_texts(self, items: List[Any]) -> str:
         seen = set()
@@ -259,7 +438,11 @@ class LegalComparator:
         
 
     def compare_clause_with_retrieval(
-        self, retriever: Any, document_id: str, clause_id: str, k: int = 4
+        self,
+        retriever: Any,
+        document_id: str,
+        clause_id: str,
+        k: int = 4
     ) -> Dict[str, Any]:
         try:
             pair = retriever.retrieve_clause_pair(
@@ -279,7 +462,7 @@ class LegalComparator:
             return build_safe_fallback(document_id, clause_id)
 
         if not original_text and revised_text:
-            return self._build_presence_only_result(
+            result = self._build_presence_only_result(
                 document_id=document_id,
                 clause_id=clause_id,
                 status="added",
@@ -288,9 +471,8 @@ class LegalComparator:
                 original_docs=original_docs,
                 revised_docs=revised_docs,
             )
-
-        if original_text and not revised_text:
-            return self._build_presence_only_result(
+        elif original_text and not revised_text:
+            result = self._build_presence_only_result(
                 document_id=document_id,
                 clause_id=clause_id,
                 status="removed",
@@ -299,12 +481,18 @@ class LegalComparator:
                 original_docs=original_docs,
                 revised_docs=revised_docs,
             )
+        else:
+            result = self.compare_clause_texts(
+                document_id=document_id,
+                clause_id=clause_id,
+                original_text=original_text,
+                revised_text=revised_text,
+            )
 
-        result = self.compare_clause_texts(
-            document_id=document_id,
-            clause_id=clause_id,
-            original_text=original_text,
-            revised_text=revised_text,
+        result = self._attach_citations_to_result(
+            result=result,
+            original_docs=original_docs,
+            revised_docs=revised_docs,
         )
 
         result["retrieval_context"] = {
@@ -315,6 +503,9 @@ class LegalComparator:
         }
 
         return result
+
+
+
 
     def compare_clause_list(
         self, retriever: Any, document_id: str, clause_ids: List[str], k: int = 4
