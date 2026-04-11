@@ -1,0 +1,60 @@
+"""
+Chay pipeline nhap du lieu (ingestion): doc DOCX -> chunk -> luu ChromaDB.
+
+Su dung:
+    python scripts/ingest.py
+"""
+import io
+import sys
+from pathlib import Path
+
+# Them project root vao sys.path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+if hasattr(sys.stdout, "buffer"):
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "buffer"):
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+
+from legal_rag.config import RAW_DATA_DIR
+from legal_rag.db.vector_store import VectorStoreManager
+from legal_rag.ingest.document_processor import DocumentProcessor
+
+
+def main() -> None:
+    print("=" * 50)
+    print("BAT DAU CHAY PIPELINE NHAP DU LIEU (INGESTION)")
+    print("=" * 50)
+
+    raw_dir = Path(RAW_DATA_DIR)
+    docx_files = sorted(raw_dir.glob("*.docx"))
+
+    if not docx_files:
+        print(f"[!] Khong tim thay file .docx nao trong thu muc {RAW_DATA_DIR}")
+        print("[!] Vui long chep tai lieu mau vao thu muc nay va chay lai.")
+        return
+
+    print(f"[*] Tim thay {len(docx_files)} tai lieu de xu ly.")
+
+    doc_processor = DocumentProcessor()
+    vector_store = VectorStoreManager()
+    vector_store.reset_collection()
+
+    total_chunks = 0
+    for file_path in docx_files:
+        print(f"\n>> Dang xu ly file: {file_path.name}")
+        chunks = doc_processor.process_file(str(file_path))
+        print(f"  + Da chia thanh {len(chunks)} doan (chunks).")
+
+        if not chunks:
+            continue
+
+        vector_store.add_documents(chunks)
+        total_chunks += len(chunks)
+
+    print(f"\n[+] HOAN THANH. Tong so doan da xu ly va luu: {total_chunks}")
+    print("=" * 50)
+
+
+if __name__ == "__main__":
+    main()
