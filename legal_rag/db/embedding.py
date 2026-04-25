@@ -34,27 +34,33 @@ class BGEEmbeddingModel:
     def embed_query(self, text: str) -> List[float]:
         return self.embed_documents([text])[0]
 
-    def embed_documents(self, texts: Sequence[str]) -> List[List[float]]:
+    def embed_documents(self, texts: Sequence[str], batch_size: int = 4) -> List[List[float]]:
         cleaned_texts = [text.strip() for text in texts if text and text.strip()]
         if not cleaned_texts:
             return []
 
-        encoded = self._tokenizer(
-            cleaned_texts,
-            padding=True,
-            truncation=True,
-            return_tensors="pt",
-        )
-        encoded = {key: value.to(self.device) for key, value in encoded.items()}
+        all_embeddings: List[List[float]] = []
+        for i in range(0, len(cleaned_texts), batch_size):
+            batch = cleaned_texts[i: i + batch_size]
+            encoded = self._tokenizer(
+                batch,
+                padding=True,
+                truncation=True,
+                max_length=512,
+                return_tensors="pt",
+            )
+            encoded = {key: value.to(self.device) for key, value in encoded.items()}
 
-        with torch.no_grad():
-            outputs = self._model(**encoded)
+            with torch.no_grad():
+                outputs = self._model(**encoded)
 
-        token_embeddings = outputs.last_hidden_state
-        attention_mask = encoded["attention_mask"]
-        pooled = self._mean_pool(token_embeddings, attention_mask)
-        normalized = F.normalize(pooled, p=2, dim=1)
-        return normalized.cpu().tolist()
+            token_embeddings = outputs.last_hidden_state
+            attention_mask = encoded["attention_mask"]
+            pooled = self._mean_pool(token_embeddings, attention_mask)
+            normalized = F.normalize(pooled, p=2, dim=1)
+            all_embeddings.extend(normalized.cpu().tolist())
+
+        return all_embeddings
 
     @staticmethod
     def _mean_pool(token_embeddings: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:

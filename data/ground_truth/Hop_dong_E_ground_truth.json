@@ -1,0 +1,40 @@
+{
+  "doc_id": "Hop_dong_E",
+  "version_old": "v1",
+  "version_new": "v2",
+  "difficulty": "medium",
+  "description": "Hop dong tu van phap ly - mo rong noi dung dich vu, tang phi, gia han thoi han",
+  "changes": [
+    {
+      "clause_id": "dieu_1",
+      "type": "SUA",
+      "description": "Mo rong pham vi: them tu van lao dong va to tung; tang gio len 15h/thang",
+      "old_text_hint": "10 gio/thang",
+      "new_text_hint": "15 gio/thang"
+    },
+    {
+      "clause_id": "dieu_2",
+      "type": "SUA",
+      "description": "Phi tu van tang 200 trieu len 250 trieu VND/nam",
+      "old_text_hint": "200.000.000",
+      "new_text_hint": "250.000.000"
+    },
+    {
+      "clause_id": "dieu_3",
+      "type": "SUA",
+      "description": "Thoi han hop dong tang tu 6 thang len 12 thang",
+      "old_text_hint": "6 thang",
+      "new_text_hint": "12 thang"
+    },
+    {
+      "clause_id": "dieu_5",
+      "type": "THEM",
+      "description": "Them dieu khoan bao mat va quyen so huu tri tue"
+    },
+    {
+      "clause_id": "dieu_6",
+      "type": "THEM",
+      "description": "Them dieu khoan quyen so huu tri tue doi voi y kien phap ly"
+    }
+  ]
+}

@@ -77,5 +77,7 @@ LLM_MODEL_NAME = "qwen2.5:1.5b"
 # Giúp tuân thủ nguyên tắc "không bằng chứng -> không kết luận" [cite: 36]
 # và không tự ý đưa ra tư vấn pháp lý [cite: 19]
 LLM_TEMPERATURE = 0.0
-LLM_MAX_TOKENS = 4096 # Đủ dài để sinh báo cáo chi tiết
-LLM_TIMEOUT = 300     # Giây — tăng cao cho CPU-only inference
+LLM_MAX_TOKENS = 768   # Cắt trần output để hạn chế model nhỏ lặp vô hạn
+LLM_NUM_CTX = 2048     # Giảm từ 8192 — KV cache 288MB -> 72MB
+LLM_TIMEOUT = 300      # Giây — tăng cao cho CPU-only inference
+

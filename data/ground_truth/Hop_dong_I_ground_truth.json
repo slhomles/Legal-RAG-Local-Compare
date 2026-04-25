@@ -1,0 +1,37 @@
+{
+  "doc_id": "Hop_dong_I",
+  "version_old": "v1",
+  "version_new": "v2",
+  "difficulty": "hard",
+  "description": "Hop dong CGCN - thay doi tu ngu gan giong (phi chuyen nhuong->li-xang, CPI), mo rong pham vi su dung",
+  "changes": [
+    {
+      "clause_id": "dieu_1",
+      "type": "SUA",
+      "description": "Bo sung 'quy trinh ky thuat' va 'thong so van hanh' - tu ngu mo rong nhung nghe tuong tu",
+      "old_text_hint": "Cong nghe san xuat san pham nhua",
+      "new_text_hint": "Cong nghe san xuat va quy trinh ky thuat san pham nhua"
+    },
+    {
+      "clause_id": "dieu_2",
+      "type": "SUA",
+      "description": "Doi ten 'Phi chuyen nhuong' thanh 'Phi li-xang' - khac ten nhung so tien giu nguyen",
+      "old_text_hint": "Phi chuyen nhuong",
+      "new_text_hint": "Phi li-xang"
+    },
+    {
+      "clause_id": "dieu_3",
+      "type": "SUA",
+      "description": "Thay 'bien dong gia ca' bang 'chi so gia tieu dung (CPI)' - cu the hoa tieu chi dieu chinh",
+      "old_text_hint": "bien dong gia ca",
+      "new_text_hint": "chi so gia tieu dung (CPI)"
+    },
+    {
+      "clause_id": "dieu_4",
+      "type": "SUA",
+      "description": "Mo rong vung pham vi sang ASEAN; them gioi han san luong 500 tan/nam",
+      "old_text_hint": "san xuat tai Viet Nam",
+      "new_text_hint": "san xuat tai Viet Nam va cac nuoc ASEAN"
+    }
+  ]
+}

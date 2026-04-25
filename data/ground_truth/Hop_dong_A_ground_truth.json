@@ -1,0 +1,49 @@
+{
+  "doc_id": "Hop_dong_A",
+  "version_old": "v1",
+  "version_new": "v2",
+  "difficulty": "easy",
+  "description": "Hop dong mua ban hang hoa dien tu - 5 sua doi va 1 them moi",
+  "changes": [
+    {
+      "clause_id": "dieu_1",
+      "type": "SUA",
+      "description": "Them 'man hinh' vao danh sach hang hoa; thay doi dia chi Ben B",
+      "old_text_hint": "laptop, may tinh ban va phu kien",
+      "new_text_hint": "laptop, may tinh ban, man hinh"
+    },
+    {
+      "clause_id": "dieu_2",
+      "type": "SUA",
+      "description": "Gia tri tang 500M len 650M, VAT 10% xuong 8%, them phuong thuc L/C",
+      "old_text_hint": "500.000.000",
+      "new_text_hint": "650.000.000"
+    },
+    {
+      "clause_id": "dieu_3",
+      "type": "SUA",
+      "description": "Thoi gian giao hang tang 30 len 45 ngay; Ben A duoc lua chon nha van chuyen",
+      "old_text_hint": "30 ngay",
+      "new_text_hint": "45 ngay"
+    },
+    {
+      "clause_id": "dieu_4",
+      "type": "SUA",
+      "description": "Bao hanh tang 12 len 24 thang; them duong day nong 24/7",
+      "old_text_hint": "12 thang",
+      "new_text_hint": "24 thang"
+    },
+    {
+      "clause_id": "dieu_5",
+      "type": "SUA",
+      "description": "Muc phat tang 8% len 10%",
+      "old_text_hint": "8%",
+      "new_text_hint": "10%"
+    },
+    {
+      "clause_id": "dieu_6",
+      "type": "THEM",
+      "description": "Them dieu khoan giai quyet tranh chap qua VIAC"
+    }
+  ]
+}

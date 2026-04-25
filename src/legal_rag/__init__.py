@@ -1,1 +1,0 @@
-"""Legal RAG local package."""

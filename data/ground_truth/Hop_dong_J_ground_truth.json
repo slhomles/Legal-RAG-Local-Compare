@@ -1,0 +1,47 @@
+{
+  "doc_id": "Hop_dong_J",
+  "version_old": "v1",
+  "version_new": "v2",
+  "difficulty": "hard",
+  "description": "Hop dong nghien cuu - thay doi ngan sach/co cau tai tro, them dieu kien nghiem thu, dao nguoc quyen so huu, them quyen su dung va tra thuong KH",
+  "changes": [
+    {
+      "clause_id": "dieu_2",
+      "type": "SUA",
+      "description": "Tong ngan sach tang 10 ti len 12 ti; co cau tai tro thay doi (70/30 -> 60/40)",
+      "old_text_hint": "10.000.000.000",
+      "new_text_hint": "12.000.000.000"
+    },
+    {
+      "clause_id": "dieu_3",
+      "type": "SUA",
+      "description": "Them dieu kien kiem chung du lieu; them nguong chinh xac 90%; tang hoi dong len 7 nguoi co 2 chuyen gia quoc te",
+      "old_text_hint": "Hoi dong khoa hoc 5 thanh vien",
+      "new_text_hint": "7 thanh vien bao gom 2 chuyen gia quoc te"
+    },
+    {
+      "clause_id": "dieu_4",
+      "type": "SUA",
+      "description": "Dao nguoc quyen so huu: tu 'so huu chung theo ty le' sang 'so huu cua Ben A, Ben B duoc li-xang 5 nam'",
+      "old_text_hint": "so huu chung theo ty le tai tro",
+      "new_text_hint": "so huu cua Ben A, Ben B duoc cap quyen su dung"
+    },
+    {
+      "clause_id": "dieu_5",
+      "type": "SUA",
+      "description": "Noi dung Dieu 5 thay doi hoan toan: tu 'tham quan co so' sang 'quyen su dung ket qua nghien cuu'",
+      "old_text_hint": "tham quan co so nghien cuu",
+      "new_text_hint": "li-xang doc quyen su dung ket qua"
+    },
+    {
+      "clause_id": "dieu_6",
+      "type": "THEM",
+      "description": "Them moi dieu khoan tra thuong khi cong bo bai bao Q1/Q2 va bang sang che"
+    },
+    {
+      "clause_id": "dieu_5_cu",
+      "type": "XOA",
+      "description": "Xoa noi dung cu cua Dieu 5 ve quyen tham quan co so nghien cuu"
+    }
+  ]
+}

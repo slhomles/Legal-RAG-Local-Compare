@@ -1,0 +1,38 @@
+{
+  "doc_id": "Hop_dong_H",
+  "version_old": "v1",
+  "version_new": "v2",
+  "difficulty": "hard",
+  "description": "Hop dong lien doanh - mo rong muc dich (them 3 doan), bao sung dieu kien cham dut (them 3 doan), them chia se tai san, them quyen uu tien mua lai, xoa thanh ly tai san cu",
+  "changes": [
+    {
+      "clause_id": "dieu_1",
+      "type": "SUA",
+      "description": "Them 3 khoan moi mo rong muc dich hop tac (linh vuc AI, nhan luc, SDGs)",
+      "old_text_hint": "Thi truong muc tieu: Viet Nam va Dong Nam A.",
+      "new_text_hint": "tri tue nhan tao, phan tich du lieu lon"
+    },
+    {
+      "clause_id": "dieu_3",
+      "type": "SUA",
+      "description": "Them 3 khoan moi ve cac truong hop cham dut dac biet (vi pham tai chinh, pha san, bao mat)",
+      "old_text_hint": "Thong bao truoc 90 ngay",
+      "new_text_hint": "cham dong gop von qua 180 ngay"
+    },
+    {
+      "clause_id": "dieu_4b",
+      "type": "THEM",
+      "description": "Them moi dieu khoan chia se tai san khi giai the (thu tu uu tien, tai san vo hinh)"
+    },
+    {
+      "clause_id": "dieu_5b",
+      "type": "THEM",
+      "description": "Them moi dieu khoan quyen uu tien mua lai co phan khi chuyen nhuong"
+    },
+    {
+      "clause_id": "dieu_5",
+      "type": "XOA",
+      "description": "Xoa hoan toan dieu khoan thanh ly tai san cu truoc khi gop von"
+    }
+  ]
+}

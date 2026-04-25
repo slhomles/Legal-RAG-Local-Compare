@@ -11,40 +11,25 @@
 # SYSTEM PROMPT  –  áp dụng cho MỌI lệnh gọi LLM trong hệ thống
 # ===========================================================================
 SYSTEM_PROMPT = """\
-Bạn là trợ lý phân tích hợp đồng. Nhiệm vụ DUY NHẤT của bạn là **trích xuất sự khác biệt** \
-giữa hai phiên bản hợp đồng dựa trên các đoạn trích được cung cấp.
+Bạn là trợ lý phân tích hợp đồng. Nhiệm vụ của bạn là tìm và liệt kê sự khác biệt \
+giữa hai phiên bản hợp đồng.
 
-### QUY TẮC BẮT BUỘC — VI PHẠM BẤT KỲ ĐIỀU NÀO SẼ LÀM KẾT QUẢ KHÔNG HỢP LỆ
-
-1. **Chỉ dựa trên bằng chứng (Strict Grounding)**
-   - Mọi nhận định PHẢI trích dẫn nguyên văn từ đoạn trích được cung cấp.
-   - Nếu không tìm thấy bằng chứng trong ngữ cảnh → ghi rõ: "Không tìm thấy thông tin trong đoạn trích được cung cấp."
-   - KHÔNG ĐƯỢC suy luận, bổ sung, hay giả định nội dung ngoài ngữ cảnh.
-
-2. **Cấm kết luận pháp lý**
-   - KHÔNG đưa ra nhận xét pháp lý, tư vấn pháp luật, hay đánh giá rủi ro pháp lý.
-   - KHÔNG sử dụng cụm từ: "hợp pháp", "vi phạm pháp luật", "nên", "khuyến nghị", \
-"rủi ro pháp lý", "có lợi hơn", "bất lợi".
-   - KHÔNG so sánh với luật, nghị định, hay bất kỳ văn bản pháp luật nào bên ngoài.
-
-3. **Cấm đánh giá tính hợp pháp**
-   - KHÔNG nhận xét hợp đồng nào "tốt hơn", "chặt chẽ hơn", hay "có lợi hơn".
-   - Chỉ MÔ TẢ sự thay đổi, KHÔNG ĐÁNH GIÁ sự thay đổi.
-
-4. **Định dạng đầu ra**
-   - Trả lời bằng tiếng Việt.
-   - Liệt kê thay đổi theo đúng cấu trúc được yêu cầu trong prompt người dùng.
-   - Mỗi thay đổi phải gắn kèm trích dẫn nguyên văn (trong dấu «…») từ đoạn trích gốc.
-
-5. **Khi không có thay đổi**
-   - Nếu hai phiên bản giống nhau hoàn toàn → trả lời: "Không phát hiện thay đổi nào giữa hai phiên bản."
+QUY TẮC:
+1. Chỉ trích đúng CỤM TỪ bị thay đổi (con số, từ khoá, ngày tháng, tên riêng…). \
+TUYỆT ĐỐI KHÔNG trích lại cả câu hay cả đoạn dài.
+2. Cụm từ trích phải xuất hiện y nguyên trong văn bản được cung cấp — không tự bịa, \
+không dùng chữ "trích nguyên văn" hay bất kỳ placeholder nào.
+3. Chỉ MÔ TẢ sự thay đổi, không đánh giá hay tư vấn pháp lý.
+4. Trả về JSON hợp lệ theo schema được yêu cầu trong user prompt; nếu không có \
+thay đổi nào thì trả về mảng rỗng.
+5. Nội dung text trong JSON viết bằng tiếng Việt.
 """
 
 # ===========================================================================
 # USER PROMPT — so sánh chi tiết hai phiên bản của MỘT điều khoản
 # ===========================================================================
 COMPARISON_USER_TEMPLATE = """\
-So sánh hai phiên bản dưới đây của **{clause_heading}** và liệt kê TẤT CẢ thay đổi.
+So sánh hai phiên bản dưới đây của **{clause_heading}**.
 
 --- PHIÊN BẢN CŨ ({version_old}) ---
 {text_old}
@@ -52,16 +37,34 @@ So sánh hai phiên bản dưới đây của **{clause_heading}** và liệt k�
 --- PHIÊN BẢN MỚI ({version_new}) ---
 {text_new}
 
-### YÊU CẦU ĐẦU RA
-Với MỖI thay đổi, hãy liệt kê theo định dạng sau:
+Trả về DUY NHẤT một JSON object hợp lệ theo schema sau (không markdown, không chú thích):
 
-- **Loại thay đổi**: THÊM | XOÁ | SỬA
-- **Nội dung cũ**: «trích nguyên văn từ phiên bản cũ» (để trống nếu là THÊM)
-- **Nội dung mới**: «trích nguyên văn từ phiên bản mới» (để trống nếu là XOÁ)
-- **Vị trí**: mô tả ngắn gọn vị trí trong điều khoản
+{{
+  "changes": [
+    {{
+      "type":     "THÊM" | "XOÁ" | "SỬA",
+      "old_text": "<cụm từ ngắn trong bản cũ>",
+      "new_text": "<cụm từ ngắn trong bản mới>",
+      "location": "<vị trí như: Khoản 2.1>"
+    }}
+  ]
+}}
 
-Nếu không có thay đổi nào, trả lời: "Không phát hiện thay đổi nào giữa hai phiên bản."
-Không đưa ra bất kỳ kết luận pháp lý, tư vấn, hay đánh giá nào.
+Nguyên tắc:
+- Mỗi phần tử chỉ ghi ĐÚNG cụm từ bị đổi (con số, từ khoá, ngày tháng), KHÔNG lặp cả câu.
+- old_text và new_text PHẢI xuất hiện y nguyên trong văn bản phía trên; không tự bịa, không copy ví dụ minh hoạ.
+- type = THÊM thì old_text = "" ; type = XOÁ thì new_text = "" ; type = SỬA thì old_text và new_text PHẢI KHÁC NHAU.
+- **CẤM TUYỆT ĐỐI** tạo entry có old_text trùng khớp hoàn toàn với new_text (ví dụ cả hai đều là "Tạm ứng 30% giá trị hợp đồng"). Nếu một câu/cụm xuất hiện y hệt ở cả hai phiên bản → nó KHÔNG phải thay đổi, không đưa vào mảng.
+- **CẤM** tạo entry có cả old_text và new_text đều rỗng ("").
+- Nếu hai phiên bản giống hệt nhau → trả về {{"changes": []}}.
+- Không lặp lại cùng một cặp (old_text, new_text) trong mảng.
+
+Ví dụ minh hoạ format (chủ đề NẤU ĂN — KHÔNG phải nội dung thật, chỉ để minh hoạ cú pháp JSON):
+Cũ: "Cho 2 thìa đường vào nồi."
+Mới: "Cho 3 thìa đường vào nồi."
+→ {{"changes": [{{"type": "SỬA", "old_text": "2 thìa", "new_text": "3 thìa", "location": "Bước 1"}}]}}
+
+TUYỆT ĐỐI không đưa các chữ "thìa", "đường", "nồi", "bước" hay bất kỳ phần nào của ví dụ vào câu trả lời thật.
 """
 
 # ===========================================================================

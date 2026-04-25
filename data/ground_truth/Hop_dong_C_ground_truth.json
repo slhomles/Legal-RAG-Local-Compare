@@ -1,0 +1,21 @@
+{
+  "doc_id": "Hop_dong_C",
+  "version_old": "v1",
+  "version_new": "v2",
+  "difficulty": "easy",
+  "description": "Hop dong thue van phong - tang gia thue va xoa dieu khoan dat coc bao dam rieng",
+  "changes": [
+    {
+      "clause_id": "dieu_2",
+      "type": "SUA",
+      "description": "Gia thue tang 15 trieu len 18 trieu VND/thang; dat coc dieu chinh theo",
+      "old_text_hint": "15.000.000",
+      "new_text_hint": "18.000.000"
+    },
+    {
+      "clause_id": "dieu_4",
+      "type": "XOA",
+      "description": "Xoa hoan toan dieu khoan dat coc bao dam thiet bi rieng"
+    }
+  ]
+}

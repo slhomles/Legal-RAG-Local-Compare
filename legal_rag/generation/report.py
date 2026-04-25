@@ -226,46 +226,76 @@ class ReportGenerator:
         """
         Xuất báo cáo dạng plain-text để in ra console hoặc lưu file.
         """
+        ICONS = {"THÊM": "➕", "XOÁ": "➖", "SỬA": "✏ ", "RAW": "❓"}
+
         lines: List[str] = []
         lines.append("=" * 70)
-        lines.append(f"BAO CAO THAY DOI HOP DONG: {report['doc_id']}")
-        lines.append(f"So sanh: {report['version_old']} -> {report['version_new']}")
+        lines.append("  BÁO CÁO THAY ĐỔI HỢP ĐỒNG")
+        lines.append(f"  Tài liệu : {report['doc_id']}")
+        lines.append(f"  So sánh  : {report['version_old']} → {report['version_new']}")
         lines.append("=" * 70)
 
-        # Chi tiết thay đổi
-        lines.append("\n--- CHI TIET THAY DOI ---\n")
-        for i, change in enumerate(report.get("changes_detail", []), 1):
-            heading = change.get("heading", "")
-            ctype = change.get("type", "")
-            lines.append(f"  {i}. [{ctype}] {heading}")
+        changes = report.get("changes_detail", [])
+        total = len(changes)
 
-            old_text = change.get("old_text", "")
-            new_text = change.get("new_text", "")
-            if old_text:
-                lines.append(f"     Cu : {old_text[:120]}{'...' if len(old_text) > 120 else ''}")
-            if new_text:
-                lines.append(f"     Moi: {new_text[:120]}{'...' if len(new_text) > 120 else ''}")
+        if not changes:
+            lines.append("\n  (Không phát hiện thay đổi nào.)\n")
+        else:
+            lines.append(f"\n  Tổng số thay đổi: {total}\n")
+            lines.append("─" * 70)
 
-            # Citation info
-            citations = change.get("citations", {})
-            for src_key in ("old_source", "new_source"):
-                src = citations.get(src_key, {})
-                if src.get("found"):
-                    lines.append(
-                        f"     -> {src_key}: {src.get('chunk_id', '')} "
-                        f"[{src.get('match_type', '')}] pos={src.get('char_start', '')}"
-                    )
+            for i, change in enumerate(changes, 1):
+                heading = change.get("heading", "")
+                ctype = change.get("type", "")
+                icon = ICONS.get(ctype, "•")
 
-            lines.append("")
+                lines.append(f"\n  [{i}/{total}] {icon} {ctype}  —  {heading}")
+
+                old_text = change.get("old_text", "")
+                new_text = change.get("new_text", "")
+                raw_text = change.get("raw", "")
+                location = change.get("location", "")
+
+                if ctype == "RAW" and raw_text:
+                    # Hiển thị response gốc của LLM, truncate nếu quá dài
+                    preview = raw_text.strip()[:400]
+                    if len(raw_text.strip()) > 400:
+                        preview += "..."
+                    for ln in preview.splitlines():
+                        lines.append(f"      {ln}")
+                else:
+                    if old_text:
+                        lines.append(f"      Cũ  : {old_text[:150]}{'...' if len(old_text) > 150 else ''}")
+                    if new_text:
+                        lines.append(f"      Mới : {new_text[:150]}{'...' if len(new_text) > 150 else ''}")
+                    if location:
+                        lines.append(f"      Vị trí: {location}")
+
+                # Citation info
+                citations = change.get("citations", {})
+                cite_parts = []
+                for src_key, label in (("old_source", "cũ"), ("new_source", "mới")):
+                    src = citations.get(src_key, {})
+                    if src.get("found"):
+                        cite_parts.append(
+                            f"ver {label}: {src.get('chunk_id', '')} "
+                            f"[{src.get('match_type', '')}] ký tự {src.get('char_start', '')}"
+                        )
+                if cite_parts:
+                    lines.append(f"      Trích dẫn: {' | '.join(cite_parts)}")
+
+                lines.append("  " + "─" * 68)
 
         # Tóm tắt LLM
-        lines.append("--- TOM TAT THAY DOI QUAN TRONG ---\n")
-        lines.append(report.get("summary", "(Khong co tom tat)"))
+        lines.append("\n" + "=" * 70)
+        lines.append("  TÓM TẮT THAY ĐỔI QUAN TRỌNG")
+        lines.append("=" * 70 + "\n")
+        lines.append(report.get("summary", "(Không có tóm tắt)"))
 
         # Guardrail warning
         if not report.get("guardrail_ok", True):
-            lines.append(f"\n{GUARDRAIL_WARNING}")
-            lines.append(f"Cum tu vi pham: {report.get('guardrail_violations', [])}")
+            lines.append(f"\n⚠  {GUARDRAIL_WARNING}")
+            lines.append(f"   Cụm từ vi phạm: {report.get('guardrail_violations', [])}")
 
         lines.append("\n" + "=" * 70)
         return "\n".join(lines)

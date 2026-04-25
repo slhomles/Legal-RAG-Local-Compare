@@ -1,0 +1,33 @@
+{
+  "doc_id": "Hop_dong_F",
+  "version_old": "v1",
+  "version_new": "v2",
+  "difficulty": "medium",
+  "description": "Hop dong thiet bi cong nghiep - tang so luong, doi don vi tien te, xoa chiet khau, them dao tao",
+  "changes": [
+    {
+      "clause_id": "dieu_1",
+      "type": "SUA",
+      "description": "So luong may bom tang 10 len 15 cai; tong gia tri tang theo",
+      "old_text_hint": "10 cai",
+      "new_text_hint": "15 cai"
+    },
+    {
+      "clause_id": "dieu_2",
+      "type": "SUA",
+      "description": "Phuong thuc thanh toan mo rong sang USD theo ty gia; tong gia tri thay doi",
+      "old_text_hint": "Thanh toan bang VND",
+      "new_text_hint": "Thanh toan bang VND hoac USD"
+    },
+    {
+      "clause_id": "dieu_3",
+      "type": "XOA",
+      "description": "Xoa hoan toan dieu khoan uu dai va chiet khau"
+    },
+    {
+      "clause_id": "dieu_5",
+      "type": "THEM",
+      "description": "Them dieu khoan dao tao su dung thiet bi 2 ngay cho nhan vien Ben mua"
+    }
+  ]
+}

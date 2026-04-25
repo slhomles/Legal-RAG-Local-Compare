@@ -1,0 +1,28 @@
+{
+  "doc_id": "Hop_dong_B",
+  "version_old": "v1",
+  "version_new": "v2",
+  "difficulty": "easy",
+  "description": "Hop dong dich vu CNTT - thay doi so dien thoai, phi dich vu va them dieu khoan bao mat",
+  "changes": [
+    {
+      "clause_id": "dieu_1",
+      "type": "SUA",
+      "description": "So dien thoai Ben cung cap thay doi 028.1234.5678 thanh 024.9876.5432",
+      "old_text_hint": "028.1234.5678",
+      "new_text_hint": "024.9876.5432"
+    },
+    {
+      "clause_id": "dieu_2",
+      "type": "SUA",
+      "description": "Phi trien khai tang tu 100 trieu len 120 trieu VND",
+      "old_text_hint": "100.000.000",
+      "new_text_hint": "120.000.000"
+    },
+    {
+      "clause_id": "dieu_5",
+      "type": "THEM",
+      "description": "Them moi dieu khoan bao mat thong tin (3 khoan)"
+    }
+  ]
+}

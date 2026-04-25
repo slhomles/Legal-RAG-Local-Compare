@@ -1,0 +1,28 @@
+{
+  "doc_id": "Hop_dong_G",
+  "version_old": "v1",
+  "version_new": "v2",
+  "difficulty": "medium",
+  "description": "Hop dong van chuyen - sua quyen chon tuyen, hoan vi cac khoan bao hiem, them boi thuong",
+  "changes": [
+    {
+      "clause_id": "dieu_2",
+      "type": "SUA",
+      "description": "Thay doi quyen chon tuyen: tu 'tu chon toi uu' sang 'theo chi dinh cua Ben thue'",
+      "old_text_hint": "tu chon tuyen duong toi uu",
+      "new_text_hint": "tuyen duong do Ben thue chi dinh"
+    },
+    {
+      "clause_id": "dieu_3",
+      "type": "SUA",
+      "description": "Hoan vi thu tu: dieu kien tai xe len dau, bao hiem xuong sau",
+      "old_text_hint": "3.1. Don vi van chuyen mua bao hiem",
+      "new_text_hint": "3.1. Tai xe phai co kinh nghiem"
+    },
+    {
+      "clause_id": "dieu_5",
+      "type": "THEM",
+      "description": "Them dieu khoan boi thuong 100% khi hang hoa hu hong do loi van chuyen"
+    }
+  ]
+}

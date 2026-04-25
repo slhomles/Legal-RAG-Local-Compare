@@ -1,0 +1,33 @@
+{
+  "doc_id": "Hop_dong_D",
+  "version_old": "v1",
+  "version_new": "v2",
+  "difficulty": "medium",
+  "description": "Hop dong thi cong - mo rong pham vi cong viec, keo dai tien do, them dieu khoan nghiem thu",
+  "changes": [
+    {
+      "clause_id": "dieu_1",
+      "type": "SUA",
+      "description": "Mo rong pham vi: them he thong thong gio va dieu hoa",
+      "old_text_hint": "dien va nuoc",
+      "new_text_hint": "dien, nuoc, thong gio va dieu hoa"
+    },
+    {
+      "clause_id": "dieu_3",
+      "type": "SUA",
+      "description": "Thoi gian hoan thanh keo dai tu 6 thang (10/2024) len 8 thang (12/2024)",
+      "old_text_hint": "15/10/2024",
+      "new_text_hint": "15/12/2024"
+    },
+    {
+      "clause_id": "dieu_4b",
+      "type": "THEM",
+      "description": "Them dieu khoan nghiem thu cong viec dinh ky hang thang"
+    },
+    {
+      "clause_id": "dieu_5",
+      "type": "SUA",
+      "description": "Khong thay doi - kiem tra false positive"
+    }
+  ]
+}

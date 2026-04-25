@@ -9,10 +9,18 @@ from __future__ import annotations
 
 import json
 import os
+
+# Đặt trước mọi import liên quan đến transformers / HuggingFace
+os.environ.setdefault("HF_HUB_OFFLINE", "1")
+os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+
 import re
 import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
+import concurrent.futures
+import time
 
 import gradio as gr
 
@@ -26,6 +34,37 @@ from legal_rag.ingest.document_processor import DocumentProcessor
 
 
 # ---------------------------------------------------------------------------
+# Singletons — load model một lần duy nhất khi khởi động
+# ---------------------------------------------------------------------------
+
+_processor: Optional[DocumentProcessor] = None
+_store: Optional[VectorStoreManager] = None
+
+
+def _get_processor() -> DocumentProcessor:
+    global _processor
+    if _processor is None:
+        _processor = DocumentProcessor()
+    return _processor
+
+
+def _get_store() -> VectorStoreManager:
+    global _store
+    if _store is None:
+        _store = VectorStoreManager()
+    return _store
+
+
+def _resolve_path(file_obj: Any) -> str:
+    """Xử lý cả string path lẫn Gradio file object."""
+    if isinstance(file_obj, str):
+        return file_obj
+    if hasattr(file_obj, "name"):
+        return file_obj.name
+    return str(file_obj)
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
@@ -36,9 +75,12 @@ def _extract_doc_info(filename: str) -> Tuple[Optional[str], Optional[str]]:
 
 
 def _ingest_files(
-    path_old: str, path_new: str
+    file_old: Any, file_new: Any
 ) -> Tuple[str, str, str, int]:
     """Xu ly 2 file DOCX: chunk va luu vao ChromaDB."""
+    path_old = _resolve_path(file_old)
+    path_new = _resolve_path(file_new)
+
     name_old = os.path.basename(path_old)
     name_new = os.path.basename(path_new)
 
@@ -54,8 +96,8 @@ def _ingest_files(
     shutil.copy2(path_old, target_old)
     shutil.copy2(path_new, target_new)
 
-    processor = DocumentProcessor()
-    store = VectorStoreManager()
+    processor = _get_processor()   # dùng singleton, không load lại model
+    store = _get_store()            # dùng singleton, không load lại model
     store.reset_collection()
 
     all_chunks: List[Dict[str, Any]] = []
@@ -67,10 +109,37 @@ def _ingest_files(
     return doc_id, version_old, version_new, len(all_chunks)
 
 
+def _format_chat_response(report: Dict[str, Any]) -> str:
+    """Tao phan hoi tu nhien cho chat (khong phai format bao cao ky thuat)."""
+    from collections import Counter
+    changes = report.get("changes_detail", [])
+    summary = report.get("summary", "").strip()
+    doc_id = report.get("doc_id", "")
+    ver_old = report.get("version_old", "")
+    ver_new = report.get("version_new", "")
+
+    counts = Counter(c.get("type", "?") for c in changes)
+    count_str = ", ".join(f"**{v} {k}**" for k, v in sorted(counts.items()))
+
+    lines = [
+        f"Da phan tich xong tai lieu **{doc_id}** ({ver_old} → {ver_new}).",
+        f"Phat hien tong cong **{len(changes)}** thay doi: {count_str}.",
+        "",
+    ]
+
+    if summary:
+        lines += ["---", "", summary]
+    else:
+        lines.append("_(LLM khong phan hoi — xem chi tiet trong file Word.)_")
+
+    lines += ["", "---", "File bao cao Word day du da duoc tao ben duoi."]
+    return "\n".join(lines)
+
+
 def _run_pipeline(
     doc_id: str, ver_old: str, ver_new: str
 ) -> Tuple[Dict[str, Any], str]:
-    """Chay pipeline so sanh. Tra ve (report_dict, report_text)."""
+    """Chay pipeline so sanh. Tra ve (report_dict, chat_text)."""
     comparator = DocumentComparator()
     comparison = comparator.compare_versions(
         doc_id=doc_id, version_old=ver_old, version_new=ver_new, k=20,
@@ -80,8 +149,8 @@ def _run_pipeline(
     report_gen = ReportGenerator()
     report = report_gen.generate_report(enriched)
     report["_enriched"] = enriched
-    report_text = report_gen.format_plain_text(report)
-    return report, report_text
+    chat_text = _format_chat_response(report)   # chat: tóm tắt tự nhiên
+    return report, chat_text
 
 
 def _generate_word(report: Dict[str, Any], doc_id: str) -> str:
@@ -164,7 +233,7 @@ CSS = """
 
 
 def create_app() -> gr.Blocks:
-    with gr.Blocks(title="Legal RAG", css=CSS, theme=gr.themes.Soft()) as app:
+    with gr.Blocks(title="Legal RAG") as app:
         # --- State ---
         doc_state = gr.State({
             "doc_id": None, "ver_old": None, "ver_new": None,
@@ -214,52 +283,73 @@ def create_app() -> gr.Blocks:
 
         # Dong/mo menu
         def toggle_menu(is_open):
-            return gr.Column(visible=not is_open), not is_open
+            return gr.update(visible=not is_open), not is_open
 
         plus_btn.click(toggle_menu, [menu_open], [action_menu, menu_open])
 
         # Mo panel upload
         def show_upload():
-            return gr.Column(visible=False), gr.Column(visible=True), False
+            return gr.update(visible=False), gr.update(visible=True), False
 
         ingest_btn.click(show_upload, [], [action_menu, upload_panel, menu_open])
 
         # Dong panel upload
         cancel_btn.click(
-            lambda: gr.Column(visible=False),
+            lambda: gr.update(visible=False),
             [], [upload_panel],
         )
 
         # Nhap tai lieu
         def do_ingest(f_old, f_new, history, state):
             if f_old is None or f_new is None:
-                history = history + [
-                    {"role": "assistant",
-                     "content": "Vui long tai len ca 2 file DOCX."}
-                ]
-                return history, state, gr.Column(visible=True)
+                yield (
+                    history + [{"role": "assistant", "content": "Vui long tai len ca 2 file DOCX."}],
+                    state,
+                    gr.update(visible=True),
+                )
+                return
+
+            yield (
+                history + [{"role": "assistant", "content": "Dang xu ly tai lieu ."}],
+                state,
+                gr.update(visible=False),
+            )
+
+            # Chạy ingest trong background thread, yield heartbeat để giữ kết nối
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(_ingest_files, f_old, f_new)
+                dots = 1
+                while not future.done():
+                    time.sleep(3)
+                    dots = dots % 3 + 1
+                    # Tạo object mới mỗi lần để Gradio detect thay đổi và gửi SSE
+                    yield (
+                        history + [{"role": "assistant", "content": "Dang xu ly tai lieu " + "." * dots}],
+                        state,
+                        gr.update(visible=False),
+                    )
 
             try:
-                doc_id, ver_old, ver_new, n = _ingest_files(f_old, f_new)
+                doc_id, ver_old, ver_new, n = future.result()
                 state = {
                     "doc_id": doc_id, "ver_old": ver_old, "ver_new": ver_new,
                     "ingested": True, "report_text": None,
                 }
-                history = history + [
-                    {"role": "assistant",
-                     "content": (
-                         f"Da nhap thanh cong **{n}** doan van ban "
-                         f"tu `{doc_id}` ({ver_old}, {ver_new}).\n\n"
-                         f"Nhan **+** > **Sinh bao cao** de phan tich."
-                     )}
-                ]
+                yield (
+                    history + [{"role": "assistant", "content": (
+                        f"Da nhap thanh cong **{n}** doan van ban "
+                        f"tu `{doc_id}` ({ver_old}, {ver_new}).\n\n"
+                        f"Nhan **+** > **Sinh bao cao** de phan tich."
+                    )}],
+                    state,
+                    gr.update(visible=False),
+                )
             except Exception as exc:
-                history = history + [
-                    {"role": "assistant",
-                     "content": f"Loi khi nhap tai lieu:\n```\n{exc}\n```"}
-                ]
-
-            return history, state, gr.Column(visible=False)
+                yield (
+                    history + [{"role": "assistant", "content": f"Loi khi nhap tai lieu:\n```\n{exc}\n```"}],
+                    state,
+                    gr.update(visible=False),
+                )
 
         confirm_btn.click(
             do_ingest,
@@ -270,39 +360,59 @@ def create_app() -> gr.Blocks:
         # Sinh bao cao
         def do_report(history, state):
             if not state.get("ingested"):
-                history = history + [
-                    {"role": "assistant",
-                     "content": "Vui long nhap tai lieu truoc khi sinh bao cao."}
-                ]
-                return history, state, gr.Column(visible=False), gr.File(visible=False), False
+                yield (
+                    history + [{"role": "assistant", "content": "Vui long nhap tai lieu truoc khi sinh bao cao."}],
+                    state,
+                    gr.update(visible=False),
+                    gr.update(visible=False),
+                    False,
+                )
+                return
 
             doc_id = state["doc_id"]
             ver_old = state["ver_old"]
             ver_new = state["ver_new"]
 
+            yield (
+                history + [{"role": "assistant", "content": "Dang phan tich tai lieu ."}],
+                state,
+                gr.update(visible=False),
+                gr.update(visible=False),
+                False,
+            )
+
+            # Chạy pipeline trong background thread, yield heartbeat để giữ kết nối
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(_run_pipeline, doc_id, ver_old, ver_new)
+                dots = 1
+                while not future.done():
+                    time.sleep(3)
+                    dots = dots % 3 + 1
+                    yield (
+                        history + [{"role": "assistant", "content": "Dang phan tich tai lieu " + "." * dots}],
+                        state,
+                        gr.update(visible=False),
+                        gr.update(visible=False),
+                        False,
+                    )
+
             try:
-                report, report_text = _run_pipeline(doc_id, ver_old, ver_new)
+                report, report_text = future.result()
                 state["report_text"] = report_text
                 word_path = _generate_word(report, doc_id)
-
-                history = history + [
-                    {"role": "assistant", "content": report_text}
-                ]
-                return (
-                    history, state,
-                    gr.Column(visible=False),
-                    gr.File(value=word_path, visible=True),
+                yield (
+                    history + [{"role": "assistant", "content": report_text}],
+                    state,
+                    gr.update(visible=False),
+                    gr.update(value=word_path, visible=True),
                     False,
                 )
             except Exception as exc:
-                history = history + [
-                    {"role": "assistant",
-                     "content": f"Loi khi sinh bao cao:\n```\n{exc}\n```"}
-                ]
-                return (
-                    history, state,
-                    gr.Column(visible=False),
-                    gr.File(visible=False),
+                yield (
+                    history + [{"role": "assistant", "content": f"Loi khi sinh bao cao:\n```\n{exc}\n```"}],
+                    state,
+                    gr.update(visible=False),
+                    gr.update(visible=False),
                     False,
                 )
 
@@ -366,7 +476,7 @@ def create_app() -> gr.Blocks:
 
 def main() -> None:
     app = create_app()
-    app.launch()
+    app.launch(css=CSS, theme=gr.themes.Soft())
 
 
 if __name__ == "__main__":

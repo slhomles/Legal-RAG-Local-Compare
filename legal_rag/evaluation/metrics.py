@@ -5,10 +5,24 @@
 #   1. Citation Accuracy: ty le trich dan tim thay dung trong chunk goc
 #   2. Change Detection Rate: ty le thay doi duoc phat hien (vs ground truth)
 #   3. Guardrail Compliance: ty le output khong vi pham guardrails
+#   4. Processing Time: thoi gian xu ly trung binh moi cap tai lieu
+#   5. Hallucination Rate: ty le ket luan khong co bang chung nguon
 # ---------------------------------------------------------------------------
 from __future__ import annotations
 
 from typing import Any, Dict, List
+
+# Chuyen doi type co dau <-> khong dau de so sanh nhat quan
+_NORMALIZE_TYPE: Dict[str, str] = {
+    "THÊM": "THEM", "THEM": "THEM",
+    "XOÁ": "XOA", "XÓA": "XOA", "XOA": "XOA",
+    "SỬA": "SUA", "SUA": "SUA",
+}
+
+
+def _norm_type(t: str) -> str:
+    """Chuyen 'SỬA'/'SUA'/'THÊM'/'THEM'/... ve dang chuan khong dau."""
+    return _NORMALIZE_TYPE.get(t.strip().upper(), t.strip().upper())
 
 
 def citation_accuracy(report: Dict[str, Any]) -> Dict[str, Any]:
@@ -114,19 +128,19 @@ def change_detection_rate(
             "extra_details": [...]
         }
     """
-    # Tap hop cac thay doi da phat hien (clause_id, type)
+    # Tap hop cac thay doi da phat hien (clause_id, type_chuan_hoa)
     detected_set: set[tuple[str, str]] = set()
     detected_list: List[Dict[str, str]] = []
 
     for change in report.get("changes_detail", []):
-        key = (change.get("clause_id", ""), change.get("type", ""))
+        key = (change.get("clause_id", ""), _norm_type(change.get("type", "")))
         detected_set.add(key)
         detected_list.append(change)
 
-    # Tap hop ground truth
+    # Tap hop ground truth (cung chuan hoa type)
     expected_set: set[tuple[str, str]] = set()
     for gt in ground_truth:
-        expected_set.add((gt["clause_id"], gt["type"]))
+        expected_set.add((gt["clause_id"], _norm_type(gt["type"])))
 
     # Tinh toan
     true_positives = detected_set & expected_set
@@ -193,4 +207,98 @@ def guardrail_compliance(report: Dict[str, Any]) -> Dict[str, Any]:
         "violations": total - compliant,
         "compliance_rate": round(compliance_rate, 4),
         "violation_details": violation_details,
+    }
+
+
+def processing_time_metric(
+    start_time: float,
+    end_time: float,
+    n_clauses: int,
+) -> Dict[str, Any]:
+    """
+    Tinh thoi gian xu ly cho mot cap tai lieu.
+
+    Args:
+        start_time: time.perf_counter() truoc khi chay pipeline
+        end_time:   time.perf_counter() sau khi chay pipeline
+        n_clauses:  so dieu khoan da xu ly
+
+    Returns:
+        {
+            "total_seconds": 12.4,
+            "seconds_per_clause": 2.48,
+            "n_clauses": 5
+        }
+    """
+    total = round(end_time - start_time, 3)
+    per_clause = round(total / n_clauses, 3) if n_clauses > 0 else 0.0
+    return {
+        "total_seconds": total,
+        "seconds_per_clause": per_clause,
+        "n_clauses": n_clauses,
+    }
+
+
+def hallucination_rate(report: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Uoc tinh ty le hallucination dua tren ket qua citation.
+
+    Mot thay doi bị coi la "ungrounded" (hallucination) khi:
+      - SUA: ca old_source va new_source deu found == False
+      - THEM: new_source found == False
+      - XOA: old_source found == False
+
+    Returns:
+        {
+            "total_changes": 8,
+            "ungrounded_changes": 1,
+            "hallucination_rate": 0.125,
+            "ungrounded_details": [{"clause_id": "dieu_3", "type": "SỬA", "reason": "..."}]
+        }
+    """
+    total = 0
+    ungrounded = 0
+    ungrounded_details: List[Dict[str, Any]] = []
+
+    for change in report.get("changes_detail", []):
+        citations = change.get("citations", {})
+        change_type_norm = _norm_type(change.get("type", ""))
+        clause_id = change.get("clause_id", "")
+        original_type = change.get("type", "")
+
+        old_found = citations.get("old_source", {}).get("found", False)
+        new_found = citations.get("new_source", {}).get("found", False)
+
+        total += 1
+        if change_type_norm == "THEM":
+            if not new_found:
+                ungrounded += 1
+                ungrounded_details.append({
+                    "clause_id": clause_id,
+                    "type": original_type,
+                    "reason": "new_source not_found",
+                })
+        elif change_type_norm == "XOA":
+            if not old_found:
+                ungrounded += 1
+                ungrounded_details.append({
+                    "clause_id": clause_id,
+                    "type": original_type,
+                    "reason": "old_source not_found",
+                })
+        else:  # SUA hoac khac
+            if not old_found and not new_found:
+                ungrounded += 1
+                ungrounded_details.append({
+                    "clause_id": clause_id,
+                    "type": original_type,
+                    "reason": "both sources not_found",
+                })
+
+    rate = round(ungrounded / total, 4) if total > 0 else 0.0
+    return {
+        "total_changes": total,
+        "ungrounded_changes": ungrounded,
+        "hallucination_rate": rate,
+        "ungrounded_details": ungrounded_details,
     }

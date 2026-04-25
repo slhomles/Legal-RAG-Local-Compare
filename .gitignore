@@ -1,6 +1,9 @@
-# Bỏ qua các file data/, chroma_db/, __pycache__/ khi commit
 venv/
 .env
 __pycache__/
 *.pyc
 CLAUDE.md
+output/
+data/chroma_db/
+.claude/
+.vscode/

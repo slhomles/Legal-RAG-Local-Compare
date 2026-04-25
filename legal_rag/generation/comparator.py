@@ -18,6 +18,7 @@ import requests
 from legal_rag.config import (
     LLM_MAX_TOKENS,
     LLM_MODEL_NAME,
+    LLM_NUM_CTX,
     LLM_TEMPERATURE,
     LLM_TIMEOUT,
     OLLAMA_BASE_URL,
@@ -180,11 +181,11 @@ class DocumentComparator:
         k: int,
     ) -> tuple[Dict[str, Dict[str, str]], Dict[str, Dict]]:
         """
-        Truy xuất chunks cho cả hai phiên bản và ghép cặp theo logical_id.
+        Truy xuất chunks cho cả hai phiên bản và ghép cặp theo ngữ nghĩa.
 
         Returns:
-            paired_data: {logical_id: {version: joined_text}}
-            metadata_lookup: {logical_id: {first metadata dict encountered}}
+            paired_data: {key: {version: joined_text}}
+            metadata_lookup: {key: metadata dict}
         """
         filter_dict = {
             "$and": [
@@ -193,16 +194,20 @@ class DocumentComparator:
             ]
         }
 
-        # Dùng query tổng quát để lấy tất cả chunks — nội dung query không quan trọng
-        # vì metadata filter mới là yếu tố quyết định
         results = self.retriever.retrieve(
             query=f"hợp đồng {doc_id}",
             k=k,
             filter_dict=filter_dict,
         )
 
-        # Ghép cặp theo logical_id → version
-        paired_data = self.context_pairer.pair_chunks(results)
+        # Ghép cặp theo ngữ nghĩa (cosine similarity của embeddings)
+        embedding_model = self.retriever.vector_store.embeddings
+        paired_data = self.context_pairer.pair_chunks_semantic(
+            retrieved_chunks=results,
+            embedding_model=embedding_model,
+            version_old=version_old,
+            version_new=version_new,
+        )
 
         # Xây dựng metadata lookup
         metadata_lookup: Dict[str, Dict] = {}
@@ -239,7 +244,13 @@ class DocumentComparator:
         )
 
         raw_response = self._call_llm(SYSTEM_PROMPT, user_prompt)
-        changes = self._parse_changes(raw_response)
+
+        # Neu Ollama khong kha dung, dung rule-based fallback
+        if raw_response.startswith("[LỖI]") or raw_response.startswith("[LOI]"):
+            changes = self._rule_based_changes(text_old, text_new)
+        else:
+            changes = self._parse_changes(raw_response)
+
         return changes, raw_response
 
     def _call_llm(self, system_prompt: str, user_prompt: str) -> str:
@@ -255,9 +266,11 @@ class DocumentComparator:
                 {"role": "user", "content": user_prompt},
             ],
             "stream": False,
+            "format": "json",
             "options": {
                 "temperature": LLM_TEMPERATURE,
                 "num_predict": LLM_MAX_TOKENS,
+                "num_ctx": LLM_NUM_CTX,
             },
         }
 
@@ -265,7 +278,8 @@ class DocumentComparator:
             resp = requests.post(url, json=payload, timeout=LLM_TIMEOUT)
             resp.raise_for_status()
             data = resp.json()
-            return data.get("message", {}).get("content", "")
+            content = data.get("message", {}).get("content", "")
+            return self._sanitize_raw_json(content)
         except requests.ConnectionError:
             return "[LỖI] Không thể kết nối đến Ollama. Hãy đảm bảo Ollama đang chạy tại " + OLLAMA_BASE_URL
         except requests.Timeout:
@@ -273,64 +287,150 @@ class DocumentComparator:
         except Exception as exc:
             return f"[LỖI] Lỗi khi gọi LLM: {exc}"
 
+    @staticmethod
+    def _sanitize_raw_json(raw: str) -> str:
+        """
+        Nếu raw là JSON có `changes`, loại bỏ các entry vô nghĩa
+        (old_text trùng new_text, kể cả cả hai rỗng) và serialize lại.
+        Dùng để raw_llm_response hiển thị trong debug đã sạch.
+        """
+        try:
+            data = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            return raw
+        if not isinstance(data, dict) or not isinstance(data.get("changes"), list):
+            return raw
+
+        def _norm(s: object) -> str:
+            return " ".join(str(s or "").split()).lower()
+
+        cleaned = []
+        for ch in data["changes"]:
+            if not isinstance(ch, dict):
+                continue
+            if _norm(ch.get("old_text")) == _norm(ch.get("new_text")):
+                continue
+            cleaned.append(ch)
+        data["changes"] = cleaned
+        return json.dumps(data, ensure_ascii=False, indent=2)
+
+    # ------------------------------------------------------------------
+    # RULE-BASED FALLBACK (dung khi Ollama khong kha dung)
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _rule_based_changes(
+        text_old: str,
+        text_new: str,
+    ) -> List[Dict[str, str]]:
+        """
+        Phat hien thay doi don gian bang cach so sanh text truc tiep.
+        Tra ve 1 change SUA neu noi dung khac nhau, danh sach rong neu giong nhau.
+        """
+        if text_old.strip() == text_new.strip():
+            return []
+        return [{
+            "type": "SỬA",
+            "old_text": text_old.strip()[:300],
+            "new_text": text_new.strip()[:300],
+            "location": "Rule-based (Ollama không khả dụng)",
+        }]
+
     # ------------------------------------------------------------------
     # PARSE — trích xuất thay đổi từ output LLM
     # ------------------------------------------------------------------
     @staticmethod
     def _parse_changes(raw_response: str) -> List[Dict[str, str]]:
         """
-        Parse output LLM thành danh sách thay đổi có cấu trúc.
-        Tìm các block có format:
-            - **Loại thay đổi**: THÊM | XOÁ | SỬA
-            - **Nội dung cũ**: «...»
-            - **Nội dung mới**: «...»
-            - **Vị trí**: ...
+        Parse JSON response từ Ollama (đã bật format="json").
+        Schema kỳ vọng: {"changes": [{"type", "old_text", "new_text", "location"}]}.
         """
+        _TYPE_MAP = {
+            "THÊM": "THÊM", "THEM": "THÊM", "ADD": "THÊM",
+            "XOÁ": "XOÁ",  "XOA": "XOÁ",  "XÓA": "XOÁ", "DELETE": "XOÁ", "REMOVE": "XOÁ",
+            "SỬA": "SỬA",  "SUA": "SỬA",  "MODIFY": "SỬA", "EDIT": "SỬA", "CHANGE": "SỬA",
+        }
+
+        try:
+            data = json.loads(raw_response)
+        except (json.JSONDecodeError, TypeError):
+            return [{
+                "type": "RAW", "old_text": "", "new_text": "",
+                "location": "", "raw": raw_response,
+            }]
+
+        if isinstance(data, list):
+            raw_changes = data
+        elif isinstance(data, dict):
+            raw_changes = data.get("changes") or data.get("thay_doi") or []
+        else:
+            raw_changes = []
+
         changes: List[Dict[str, str]] = []
-
-        # Pattern linh hoạt để parse output LLM
-        type_pattern = re.compile(
-            r"\*{0,2}Loại thay đổi\*{0,2}\s*[:：]\s*(THÊM|XOÁ|XÓA|SỬA)",
-            re.IGNORECASE,
-        )
-        old_pattern = re.compile(
-            r"\*{0,2}N\u1ed9i dung c\u0169\*{0,2}\s*[:\uff1a]\s*[\u00ab\"'\u2018\u201c]?(.*?)[\u00bb\"'\u2019\u201d]?\s*$",
-            re.IGNORECASE | re.MULTILINE,
-        )
-        new_pattern = re.compile(
-            r"\*{0,2}N\u1ed9i dung m\u1edbi\*{0,2}\s*[:\uff1a]\s*[\u00ab\"'\u2018\u201c]?(.*?)[\u00bb\"'\u2019\u201d]?\s*$",
-            re.IGNORECASE | re.MULTILINE,
-        )
-        loc_pattern = re.compile(
-            r"\*{0,2}Vị trí\*{0,2}\s*[:：]\s*(.*?)$",
-            re.IGNORECASE | re.MULTILINE,
-        )
-
-        # Tách thành các block bằng pattern "Loại thay đổi"
-        type_matches = list(type_pattern.finditer(raw_response))
-
-        for i, tmatch in enumerate(type_matches):
-            start = tmatch.start()
-            end = type_matches[i + 1].start() if i + 1 < len(type_matches) else len(raw_response)
-            block = raw_response[start:end]
-
-            change_type = tmatch.group(1).upper()
-            if change_type == "XÓA":
-                change_type = "XOÁ"
-
-            old_m = old_pattern.search(block)
-            new_m = new_pattern.search(block)
-            loc_m = loc_pattern.search(block)
-
+        for _ch in raw_changes:
+            if not isinstance(_ch, dict):
+                continue
+            _t_raw = str(_ch.get("type") or _ch.get("loai") or "").strip().upper()
+            _old_raw = _ch.get("old_text") if _ch.get("old_text") is not None else _ch.get("cu", "")
+            _new_raw = _ch.get("new_text") if _ch.get("new_text") is not None else _ch.get("moi", "")
+            _loc_raw = _ch.get("location") if _ch.get("location") is not None else _ch.get("vi_tri", "")
             changes.append({
-                "type": change_type,
-                "old_text": (old_m.group(1).strip() if old_m else ""),
-                "new_text": (new_m.group(1).strip() if new_m else ""),
-                "location": (loc_m.group(1).strip() if loc_m else ""),
+                "type": _TYPE_MAP.get(_t_raw, _t_raw),
+                "old_text": str(_old_raw).strip().strip("«»\"'"),
+                "new_text": str(_new_raw).strip().strip("«»\"'"),
+                "location": str(_loc_raw).strip(),
             })
 
-        # Fallback: nếu không parse được theo format chuẩn, trả response nguyên bản
-        if not changes and "Không phát hiện thay đổi" not in raw_response:
+        # (regex fallback cũ đã bị bỏ — Ollama với format="json" đảm bảo JSON hợp lệ)
+
+        _DELETE_ME_OLDPAT = re.compile(
+            r"\*{0,2}(?:N[ộo]i dung c[ũu]|N[ộo]i dung cu)\*{0,2}"
+            r"\s*[:：]\s*[«\"'\u2018\u201c]?(.*?)[»\"'\u2019\u201d]?\s*$",
+            re.IGNORECASE | re.MULTILINE,
+        )
+        # Nội dung mới — chấp nhận cả có và không dấu
+        new_pattern = re.compile(
+            r"\*{0,2}(?:N[ộo]i dung m[ớo]i|N[ộo]i dung moi)\*{0,2}"
+            r"\s*[:：]\s*[«\"'\u2018\u201c]?(.*?)[»\"'\u2019\u201d]?\s*$",
+            re.IGNORECASE | re.MULTILINE,
+        )
+        # Vị trí — chấp nhận cả có và không dấu
+        loc_pattern = re.compile(
+            r"\*{0,2}(?:V[ịi] tr[ií]|Vi tri)\*{0,2}\s*[:：]\s*(.*?)$",
+            re.IGNORECASE | re.MULTILINE,
+        )
+
+
+        # Sanity filter + dedup cho output model nhỏ hay lặp/bịa:
+        #   (a) bỏ change có old == new (SỬA X → X vô nghĩa).
+        #   (b) dedup theo (type, old_norm, new_norm).
+        #   (c) bỏ change là phép đảo ngược của một change đã có trước đó
+        #       (vd: «50% → 40%» rồi «40% → 50%» — model 1.5B hay bịa kiểu này).
+        seen_triples: set = set()
+        seen_unordered_pairs: set = set()
+        deduped: List[Dict[str, str]] = []
+        for ch in changes:
+            old_norm = " ".join(ch["old_text"].split()).lower()
+            new_norm = " ".join(ch["new_text"].split()).lower()
+
+            if old_norm == new_norm:
+                continue
+
+            triple = (ch["type"], old_norm, new_norm)
+            if triple in seen_triples:
+                continue
+
+            pair = frozenset({old_norm, new_norm})
+            if old_norm and new_norm and pair in seen_unordered_pairs:
+                continue
+
+            seen_triples.add(triple)
+            seen_unordered_pairs.add(pair)
+            deduped.append(ch)
+        changes = deduped
+
+        # Fallback: nếu không parse được, giữ nguyên response để hiển thị
+        _no_change_phrases = ("không phát hiện thay đổi", "khong phat hien thay doi")
+        if not changes and not any(p in raw_response.lower() for p in _no_change_phrases):
             changes.append({
                 "type": "RAW",
                 "old_text": "",
@@ -346,5 +446,6 @@ class DocumentComparator:
     # ------------------------------------------------------------------
     @staticmethod
     def _get_heading(metadata_lookup: Dict[str, Dict], clause_id: str) -> str:
-        meta = metadata_lookup.get(clause_id, {})
-        return meta.get("chunk_heading", clause_id)
+        base_id = clause_id.split("_new")[0] if "_new" in clause_id else clause_id
+        meta = metadata_lookup.get(base_id, {})
+        return meta.get("chunk_heading", base_id)
