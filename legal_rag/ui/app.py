@@ -1,9 +1,9 @@
 # ---------------------------------------------------------------------------
-# Giao dien chat bot so sanh hop dong phap ly.
+# Giao diện chat bot so sánh hợp đồng pháp lý.
 #
-# Giao dien don gian voi:
-#   - Chat bot o giua
-#   - Nut "+" mo menu: Nhap tai lieu / Sinh bao cao
+# Giao diện đơn giản với:
+#   - Chat bot ở giữa
+#   - Nút "+" mở menu: Nhập tài liệu / Sinh báo cáo
 # ---------------------------------------------------------------------------
 from __future__ import annotations
 
@@ -69,7 +69,7 @@ def _resolve_path(file_obj: Any) -> str:
 # ---------------------------------------------------------------------------
 
 def _extract_doc_info(filename: str) -> Tuple[Optional[str], Optional[str]]:
-    """Trich xuat doc_id va version tu ten file (VD: Hop_dong_A_v1.docx)."""
+    """Trích xuất doc_id và version từ tên file (VD: Hop_dong_A_v1.docx)."""
     m = re.match(r"(.+?)_(v\d+)\.docx$", filename, re.IGNORECASE)
     return (m.group(1), m.group(2)) if m else (None, None)
 
@@ -77,7 +77,7 @@ def _extract_doc_info(filename: str) -> Tuple[Optional[str], Optional[str]]:
 def _ingest_files(
     file_old: Any, file_new: Any
 ) -> Tuple[str, str, str, int]:
-    """Xu ly 2 file DOCX: chunk va luu vao ChromaDB."""
+    """Xử lý 2 file DOCX: chunk và lưu vào ChromaDB."""
     path_old = _resolve_path(file_old)
     path_new = _resolve_path(file_new)
 
@@ -110,7 +110,7 @@ def _ingest_files(
 
 
 def _format_chat_response(report: Dict[str, Any]) -> str:
-    """Tao phan hoi tu nhien cho chat (khong phai format bao cao ky thuat)."""
+    """Tạo phản hồi tự nhiên cho chat (không phải format báo cáo kỹ thuật)."""
     from collections import Counter
     changes = report.get("changes_detail", [])
     summary = report.get("summary", "").strip()
@@ -122,24 +122,24 @@ def _format_chat_response(report: Dict[str, Any]) -> str:
     count_str = ", ".join(f"**{v} {k}**" for k, v in sorted(counts.items()))
 
     lines = [
-        f"Da phan tich xong tai lieu **{doc_id}** ({ver_old} → {ver_new}).",
-        f"Phat hien tong cong **{len(changes)}** thay doi: {count_str}.",
+        f"Đã phân tích xong tài liệu **{doc_id}** ({ver_old} → {ver_new}).",
+        f"Phát hiện tổng cộng **{len(changes)}** thay đổi: {count_str}.",
         "",
     ]
 
     if summary:
         lines += ["---", "", summary]
     else:
-        lines.append("_(LLM khong phan hoi — xem chi tiet trong file Word.)_")
+        lines.append("_(LLM không phản hồi — xem chi tiết trong file Word.)_")
 
-    lines += ["", "---", "File bao cao Word day du da duoc tao ben duoi."]
+    lines += ["", "---", "File báo cáo Word đầy đủ đã được tạo bên dưới."]
     return "\n".join(lines)
 
 
 def _run_pipeline(
     doc_id: str, ver_old: str, ver_new: str
 ) -> Tuple[Dict[str, Any], str]:
-    """Chay pipeline so sanh. Tra ve (report_dict, chat_text)."""
+    """Chạy pipeline so sánh. Trả về (report_dict, chat_text)."""
     comparator = DocumentComparator()
     comparison = comparator.compare_versions(
         doc_id=doc_id, version_old=ver_old, version_new=ver_new, k=20,
@@ -154,7 +154,7 @@ def _run_pipeline(
 
 
 def _generate_word(report: Dict[str, Any], doc_id: str) -> str:
-    """Sinh file Word tu report dict. Tra ve duong dan file."""
+    """Sinh file Word từ report dict. Trả về đường dẫn file."""
     Path("output").mkdir(exist_ok=True)
     json_path = "output/report_data.json"
     with open(json_path, "w", encoding="utf-8") as f:
@@ -169,65 +169,159 @@ def _generate_word(report: Dict[str, Any], doc_id: str) -> str:
 # ---------------------------------------------------------------------------
 
 WELCOME = (
-    "Xin chao! Toi la tro ly so sanh hop dong phap ly.\n\n"
-    "Nhan **+** de bat dau:\n"
-    "- **Nhap tai lieu** — tai len 2 phien ban hop dong\n"
-    "- **Sinh bao cao** — phan tich va xuat bao cao Word"
+    "Xin chào! Tôi là trợ lý so sánh hợp đồng pháp lý.\n\n"
+    "Nhấn **+** để bắt đầu:\n"
+    "- **Nhập tài liệu** — tải lên 2 phiên bản hợp đồng\n"
+    "- **Sinh báo cáo** — phân tích và xuất báo cáo Word"
 )
 
 CSS = """
-.welcome-title {
+/* ----- Khung tổng & nền ----- */
+.gradio-container {
+    background: linear-gradient(180deg, #f5f6ff 0%, #fbfbfe 38%, #ffffff 100%) !important;
+    max-width: 860px !important;
+    margin: 0 auto !important;
+    padding: 0 20px 28px 20px !important;
+}
+
+/* ----- Header ----- */
+.app-header {
     text-align: center;
-    padding: 48px 0 8px 0;
+    padding: 44px 0 22px 0;
 }
-.welcome-title h1 {
-    font-size: 2em;
-    font-weight: 300;
-    color: #1a1a1a;
+.app-header .app-icon {
+    font-size: 2.6em;
+    line-height: 1;
+    display: block;
+    margin-bottom: 6px;
 }
+.app-header h1 {
+    font-size: 2.2em;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    margin: 0;
+    background: linear-gradient(95deg, #4f46e5 0%, #7c3aed 55%, #6366f1 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+.app-header .app-subtitle {
+    margin-top: 8px;
+    font-size: 1.0em;
+    color: #6b7280;
+    font-weight: 400;
+}
+
+/* ----- Chatbot ----- */
+#main-chat {
+    border: 1px solid #e6e7f2 !important;
+    border-radius: 20px !important;
+    background: #ffffff !important;
+    box-shadow: 0 8px 30px rgba(79, 70, 229, 0.07) !important;
+    padding: 8px !important;
+}
+/* Bong bóng tin nhắn (selector nội bộ Gradio — tinh chỉnh nhẹ) */
+#main-chat .message,
+#main-chat .bubble {
+    border-radius: 16px !important;
+    line-height: 1.6 !important;
+}
+
+/* ----- Thanh nhập dạng pill ----- */
+.input-bar {
+    margin-top: 14px !important;
+    align-items: center !important;
+    gap: 8px !important;
+}
+.input-bar textarea,
+.input-bar input[type="text"] {
+    border-radius: 24px !important;
+    border: 1px solid #e0e1ee !important;
+    padding: 13px 18px !important;
+    background: #ffffff !important;
+    box-shadow: 0 2px 10px rgba(79, 70, 229, 0.05) !important;
+    transition: border-color .15s ease, box-shadow .15s ease !important;
+}
+.input-bar textarea:focus,
+.input-bar input[type="text"]:focus {
+    border-color: #6366f1 !important;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.18) !important;
+    outline: none !important;
+}
+
+/* ----- Nút "+" tròn (FAB) ----- */
 .plus-btn {
-    min-width: 42px !important;
-    max-width: 42px !important;
-    height: 42px !important;
+    min-width: 46px !important;
+    max-width: 46px !important;
+    height: 46px !important;
     border-radius: 50% !important;
-    font-size: 1.4em !important;
+    font-size: 1.45em !important;
     padding: 0 !important;
-    border: 1px solid #d0d0d0 !important;
-    background: white !important;
-    color: #555 !important;
+    border: 1px solid #d7d9ec !important;
+    background: #ffffff !important;
+    color: #4f46e5 !important;
+    box-shadow: 0 2px 8px rgba(79, 70, 229, 0.08) !important;
+    transition: all .15s ease !important;
 }
 .plus-btn:hover {
-    background: #f5f5f5 !important;
-    border-color: #999 !important;
+    background: #eef0ff !important;
+    border-color: #6366f1 !important;
+    color: #4338ca !important;
 }
+
+/* ----- Nút Gửi (primary) ----- */
+.send-btn {
+    border-radius: 24px !important;
+    min-width: 72px !important;
+    height: 46px !important;
+    font-weight: 600 !important;
+    border: none !important;
+    color: #ffffff !important;
+    background: linear-gradient(95deg, #4f46e5 0%, #6366f1 100%) !important;
+    box-shadow: 0 4px 14px rgba(79, 70, 229, 0.28) !important;
+    transition: filter .15s ease, transform .05s ease !important;
+}
+.send-btn:hover {
+    filter: brightness(1.06) !important;
+}
+.send-btn:active {
+    transform: translateY(1px) !important;
+}
+
+/* ----- Menu chức năng ----- */
 .action-menu {
-    border: 1px solid #e5e5e5;
+    border: 1px solid #e6e7f2;
     border-radius: 16px;
-    padding: 4px 0;
-    background: white;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.08);
-    max-width: 260px;
-    margin-top: 4px;
+    padding: 6px;
+    background: #ffffff;
+    box-shadow: 0 10px 30px rgba(79, 70, 229, 0.12);
+    max-width: 280px;
+    margin-top: 6px;
 }
 .action-item {
     border: none !important;
     background: none !important;
     text-align: left !important;
-    padding: 12px 20px !important;
-    font-size: 0.95em !important;
-    color: #333 !important;
+    padding: 12px 18px !important;
+    font-size: 0.96em !important;
+    color: #374151 !important;
     border-radius: 12px !important;
-    margin: 2px 4px !important;
+    margin: 2px !important;
+    transition: background .12s ease, color .12s ease !important;
 }
 .action-item:hover {
-    background: #f5f5f5 !important;
+    background: #eef0ff !important;
+    color: #4338ca !important;
 }
+
+/* ----- Panel upload ----- */
 .upload-panel {
-    border: 1px solid #e5e5e5;
-    border-radius: 16px;
-    padding: 20px;
-    background: #fafafa;
-    margin-top: 8px;
+    border: 1px solid #e6e7f2;
+    border-radius: 18px;
+    padding: 22px;
+    background: #fbfbff;
+    margin-top: 12px;
+    box-shadow: 0 6px 22px rgba(79, 70, 229, 0.07);
 }
 """
 
@@ -242,75 +336,85 @@ def create_app() -> gr.Blocks:
         menu_open = gr.State(False)
 
         # --- Layout ---
-        gr.HTML("<div class='welcome-title'><h1>Legal RAG</h1></div>")
+        gr.HTML(
+            "<div class='app-header'>"
+            "<span class='app-icon'>⚖️</span>"
+            "<h1>Legal RAG</h1>"
+            "<div class='app-subtitle'>Trợ lý so sánh &amp; phân tích thay đổi hợp đồng pháp lý</div>"
+            "</div>"
+        )
 
         chatbot = gr.Chatbot(
             value=[{"role": "assistant", "content": WELCOME}],
             height=460,
             show_label=False,
+            elem_id="main-chat",
         )
 
-        # Thanh nhap lieu
-        with gr.Row():
+        # Thanh nhập liệu
+        with gr.Row(elem_classes=["input-bar"]):
             plus_btn = gr.Button("+", elem_classes=["plus-btn"], scale=0)
             msg = gr.Textbox(
-                placeholder="Ban can ho tro gi?",
+                placeholder="Bạn cần hỗ trợ gì?",
                 show_label=False,
                 scale=4,
                 container=False,
             )
-            send_btn = gr.Button("Gui", variant="primary", scale=0, min_width=60)
+            send_btn = gr.Button(
+                "Gửi", variant="primary", scale=0, min_width=72,
+                elem_classes=["send-btn"],
+            )
 
-        # Menu chuc nang (an mac dinh)
+        # Menu chức năng (ẩn mặc định)
         with gr.Column(visible=False, elem_classes=["action-menu"]) as action_menu:
-            ingest_btn = gr.Button("Nhap tai lieu", elem_classes=["action-item"])
-            report_btn = gr.Button("Sinh bao cao", elem_classes=["action-item"])
+            ingest_btn = gr.Button("Nhập tài liệu", elem_classes=["action-item"])
+            report_btn = gr.Button("Sinh báo cáo", elem_classes=["action-item"])
 
-        # Panel upload (an mac dinh)
+        # Panel upload (ẩn mặc định)
         with gr.Column(visible=False, elem_classes=["upload-panel"]) as upload_panel:
-            gr.Markdown("**Tai len 2 phien ban hop dong (.docx)**")
+            gr.Markdown("**Tải lên 2 phiên bản hợp đồng (.docx)**")
             with gr.Row():
-                file_old = gr.File(label="Phien ban cu (v1)", file_types=[".docx"])
-                file_new = gr.File(label="Phien ban moi (v2)", file_types=[".docx"])
+                file_old = gr.File(label="Phiên bản cũ (v1)", file_types=[".docx"])
+                file_new = gr.File(label="Phiên bản mới (v2)", file_types=[".docx"])
             with gr.Row():
-                confirm_btn = gr.Button("Nhap", variant="primary", scale=1)
-                cancel_btn = gr.Button("Huy", variant="secondary", scale=1)
+                confirm_btn = gr.Button("Nhập", variant="primary", scale=1)
+                cancel_btn = gr.Button("Hủy", variant="secondary", scale=1)
 
-        # File bao cao (an cho den khi sinh xong)
-        report_file = gr.File(visible=False, label="Tai bao cao")
+        # File báo cáo (ẩn cho đến khi sinh xong)
+        report_file = gr.File(visible=False, label="Tải báo cáo")
 
         # --- Events ---
 
-        # Dong/mo menu
+        # Đóng/mở menu
         def toggle_menu(is_open):
             return gr.update(visible=not is_open), not is_open
 
         plus_btn.click(toggle_menu, [menu_open], [action_menu, menu_open])
 
-        # Mo panel upload
+        # Mở panel upload
         def show_upload():
             return gr.update(visible=False), gr.update(visible=True), False
 
         ingest_btn.click(show_upload, [], [action_menu, upload_panel, menu_open])
 
-        # Dong panel upload
+        # Đóng panel upload
         cancel_btn.click(
             lambda: gr.update(visible=False),
             [], [upload_panel],
         )
 
-        # Nhap tai lieu
+        # Nhập tài liệu
         def do_ingest(f_old, f_new, history, state):
             if f_old is None or f_new is None:
                 yield (
-                    history + [{"role": "assistant", "content": "Vui long tai len ca 2 file DOCX."}],
+                    history + [{"role": "assistant", "content": "Vui lòng tải lên cả 2 file DOCX."}],
                     state,
                     gr.update(visible=True),
                 )
                 return
 
             yield (
-                history + [{"role": "assistant", "content": "Dang xu ly tai lieu ."}],
+                history + [{"role": "assistant", "content": "Đang xử lý tài liệu ."}],
                 state,
                 gr.update(visible=False),
             )
@@ -324,7 +428,7 @@ def create_app() -> gr.Blocks:
                     dots = dots % 3 + 1
                     # Tạo object mới mỗi lần để Gradio detect thay đổi và gửi SSE
                     yield (
-                        history + [{"role": "assistant", "content": "Dang xu ly tai lieu " + "." * dots}],
+                        history + [{"role": "assistant", "content": "Đang xử lý tài liệu " + "." * dots}],
                         state,
                         gr.update(visible=False),
                     )
@@ -337,16 +441,16 @@ def create_app() -> gr.Blocks:
                 }
                 yield (
                     history + [{"role": "assistant", "content": (
-                        f"Da nhap thanh cong **{n}** doan van ban "
-                        f"tu `{doc_id}` ({ver_old}, {ver_new}).\n\n"
-                        f"Nhan **+** > **Sinh bao cao** de phan tich."
+                        f"Đã nhập thành công **{n}** đoạn văn bản "
+                        f"từ `{doc_id}` ({ver_old}, {ver_new}).\n\n"
+                        f"Nhấn **+** > **Sinh báo cáo** để phân tích."
                     )}],
                     state,
                     gr.update(visible=False),
                 )
             except Exception as exc:
                 yield (
-                    history + [{"role": "assistant", "content": f"Loi khi nhap tai lieu:\n```\n{exc}\n```"}],
+                    history + [{"role": "assistant", "content": f"Lỗi khi nhập tài liệu:\n```\n{exc}\n```"}],
                     state,
                     gr.update(visible=False),
                 )
@@ -357,11 +461,11 @@ def create_app() -> gr.Blocks:
             [chatbot, doc_state, upload_panel],
         )
 
-        # Sinh bao cao
+        # Sinh báo cáo
         def do_report(history, state):
             if not state.get("ingested"):
                 yield (
-                    history + [{"role": "assistant", "content": "Vui long nhap tai lieu truoc khi sinh bao cao."}],
+                    history + [{"role": "assistant", "content": "Vui lòng nhập tài liệu trước khi sinh báo cáo."}],
                     state,
                     gr.update(visible=False),
                     gr.update(visible=False),
@@ -374,7 +478,7 @@ def create_app() -> gr.Blocks:
             ver_new = state["ver_new"]
 
             yield (
-                history + [{"role": "assistant", "content": "Dang phan tich tai lieu ."}],
+                history + [{"role": "assistant", "content": "Đang phân tích tài liệu ."}],
                 state,
                 gr.update(visible=False),
                 gr.update(visible=False),
@@ -389,7 +493,7 @@ def create_app() -> gr.Blocks:
                     time.sleep(3)
                     dots = dots % 3 + 1
                     yield (
-                        history + [{"role": "assistant", "content": "Dang phan tich tai lieu " + "." * dots}],
+                        history + [{"role": "assistant", "content": "Đang phân tích tài liệu " + "." * dots}],
                         state,
                         gr.update(visible=False),
                         gr.update(visible=False),
@@ -409,7 +513,7 @@ def create_app() -> gr.Blocks:
                 )
             except Exception as exc:
                 yield (
-                    history + [{"role": "assistant", "content": f"Loi khi sinh bao cao:\n```\n{exc}\n```"}],
+                    history + [{"role": "assistant", "content": f"Lỗi khi sinh báo cáo:\n```\n{exc}\n```"}],
                     state,
                     gr.update(visible=False),
                     gr.update(visible=False),
@@ -422,7 +526,7 @@ def create_app() -> gr.Blocks:
             [chatbot, doc_state, action_menu, report_file, menu_open],
         )
 
-        # Xu ly tin nhan text
+        # Xử lý tin nhắn text
         def handle_msg(message, history, state):
             if not message or not message.strip():
                 return history, state, ""
@@ -430,13 +534,17 @@ def create_app() -> gr.Blocks:
             history = history + [{"role": "user", "content": message}]
             msg_lower = message.lower().strip()
 
-            compare_kw = ["so sanh", "bao cao", "report", "compare", "phan tich"]
-            review_kw = ["xem lai", "chi tiet", "detail", "xem"]
+            # Giữ từ khóa không dấu + bổ sung biến thể có dấu để khớp cả hai kiểu gõ
+            compare_kw = [
+                "so sanh", "so sánh", "bao cao", "báo cáo",
+                "report", "compare", "phan tich", "phân tích",
+            ]
+            review_kw = ["xem lai", "xem lại", "chi tiet", "chi tiết", "detail", "xem"]
 
             if any(kw in msg_lower for kw in compare_kw):
                 if not state.get("ingested"):
                     history += [{"role": "assistant",
-                                 "content": "Vui long nhap tai lieu truoc (nhan **+** > **Nhap tai lieu**)."}]
+                                 "content": "Vui lòng nhập tài liệu trước (nhấn **+** > **Nhập tài liệu**)."}]
                     return history, state, ""
                 try:
                     _, report_text = _run_pipeline(
@@ -446,7 +554,7 @@ def create_app() -> gr.Blocks:
                     history += [{"role": "assistant", "content": report_text}]
                 except Exception as exc:
                     history += [{"role": "assistant",
-                                 "content": f"Loi:\n```\n{exc}\n```"}]
+                                 "content": f"Lỗi:\n```\n{exc}\n```"}]
                 return history, state, ""
 
             if any(kw in msg_lower for kw in review_kw) and state.get("report_text"):
@@ -456,10 +564,10 @@ def create_app() -> gr.Blocks:
             history += [
                 {"role": "assistant",
                  "content": (
-                     "Nhan **+** de:\n"
-                     "- **Nhap tai lieu** — tai len hop dong\n"
-                     "- **Sinh bao cao** — phan tich va xuat bao cao\n\n"
-                     "Hoac nhap **so sanh** sau khi da nhap tai lieu."
+                     "Nhấn **+** để:\n"
+                     "- **Nhập tài liệu** — tải lên hợp đồng\n"
+                     "- **Sinh báo cáo** — phân tích và xuất báo cáo\n\n"
+                     "Hoặc nhập **so sánh** sau khi đã nhập tài liệu."
                  )}
             ]
             return history, state, ""
@@ -476,7 +584,15 @@ def create_app() -> gr.Blocks:
 
 def main() -> None:
     app = create_app()
-    app.launch(css=CSS, theme=gr.themes.Soft())
+    theme = gr.themes.Soft(
+        primary_hue=gr.themes.colors.indigo,
+        neutral_hue=gr.themes.colors.slate,
+        font=[gr.themes.GoogleFont("Inter"), "ui-sans-serif", "system-ui", "sans-serif"],
+    ).set(
+        body_background_fill="transparent",
+        block_radius="16px",
+    )
+    app.launch(css=CSS, theme=theme)
 
 
 if __name__ == "__main__":
